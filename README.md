@@ -18,7 +18,7 @@ be hosted as a static file. Two ways to get your own URL:
 - **Deploy to Vercel in one click.** The repo ships `api/` functions that act as the proxy and a
   `vercel.json`. Your key is entered in the page, never stored on the server.
 
-  [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftrungdq88%2Fjev-tetris%2Ftree%2Fclaude%2Fjev-tetris-demo-dtm2mn&project-name=jev-tetris&repository-name=jev-tetris)
+  [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftrungdq88%2Fjev-tetris&project-name=jev-tetris&repository-name=jev-tetris)
 
   Any host that runs `npm start` on a Node 20+ box (Railway, Render, Fly, a VPS) works too.
 - **Run locally.** See [Run it](#run-it) below.
