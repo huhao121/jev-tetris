@@ -3,123 +3,98 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Jev plays Tetris</title>
-  <meta name="description" content="Demo: TypeSafe's Jev model chooses every Tetris move from placements the code enumerates." />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='6' height='6' fill='%233fd6f0'/><rect x='9' y='1' width='6' height='6' fill='%23f5d547'/><rect x='1' y='9' width='6' height='6' fill='%23b565f2'/><rect x='9' y='9' width='6' height='6' fill='%23f26b6b'/></svg>" />
+  <title>Jev vs Claude Haiku</title>
+  <meta name="description" content="Two models play the same Tetris piece sequence in real time. First to top out loses." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='6' height='14' fill='%233fd6f0'/><rect x='9' y='1' width='6' height='14' fill='%23f4a340'/></svg>" />
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="battle.css" />
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>Jev plays Tetris</h1>
+      <h1>Jev vs Claude Haiku</h1>
       <p class="sub">
-        Code enumerates every legal placement and describes the outcome.
-        <a href="https://docs.typesafe.ai" target="_blank" rel="noopener">Jev</a>, TypeSafe's System One model,
-        picks one with a single <code>choice</code> question per piece.
+        Same piece sequence, same options, same clock. Pieces keep falling while each model thinks,
+        and gravity gets stronger as the minutes pass; a piece that lands before its answer arrives
+        locks where it is. Every line you clear lands on your opponent's board as a garbage row.
+        Whoever tops out first loses.
+        <a href="solo.html">Single-player demo: Jev on its own</a>
       </p>
-    </div>
-    <div class="mode" role="radiogroup" aria-label="Who plays">
-      <label><input type="radio" name="mode" value="jev" checked /> Jev decides</label>
-      <label><input type="radio" name="mode" value="heuristic" /> Built-in heuristic (no key)</label>
     </div>
   </header>
 
-  <main class="layout">
-    <section class="board-col">
+  <main class="arena">
+    <section class="player" id="left">
+      <div class="player-head">
+        <span class="badge jev">Jev</span>
+        <span class="model muted">jev-latest · TypeSafe</span>
+      </div>
       <div class="board-wrap">
-        <canvas id="board" width="300" height="600" aria-label="Tetris board"></canvas>
-        <div id="overlay" class="overlay hidden"></div>
+        <canvas class="board" id="boardL" width="240" height="480" aria-label="Jev's board"></canvas>
+        <div class="overlay hidden" id="overlayL"></div>
       </div>
-      <div class="status-row">
-        <span id="status" class="status">Enter your TypeSafe API key and press Start.</span>
-      </div>
-      <div class="controls">
-        <button id="start" class="primary">Start</button>
-        <button id="pause" disabled>Pause</button>
-        <button id="reset">Reset</button>
-        <label class="speed">Speed <input id="speed" type="range" min="1" max="10" value="6" /></label>
-      </div>
+      <div class="incoming" id="incomingL"></div>
+      <div class="pstats" id="statsL"></div>
+      <div class="pmove muted" id="moveL">Waiting to start.</div>
     </section>
 
-    <section class="side-col">
-      <div class="card" id="setup">
-        <h2>Your TypeSafe key</h2>
-        <div class="key-row">
-          <input id="apiKey" type="password" placeholder="ts-..." autocomplete="off" spellcheck="false" />
-          <button id="toggleKey" type="button" title="Show or hide">👁</button>
-          <button id="testKey" type="button">Test</button>
-        </div>
-        <label class="remember"><input id="remember" type="checkbox" /> Remember in this browser</label>
-        <p class="hint">
-          Get a key at <a href="https://console.typesafe.ai/settings/keys" target="_blank" rel="noopener">console.typesafe.ai</a>.
-          The key goes from this page to the small proxy in <code>server.mjs</code>, which forwards it to
-          <code>api.typesafe.ai</code> and stores nothing.
-        </p>
-        <div id="keyStatus" class="key-status"></div>
+    <section class="center">
+      <div class="present-title">Real-time Tetris</div>
+      <div class="card" id="setup-card">
+        <h2>Keys</h2>
+        <label class="field">TypeSafe key <input id="jevKey" type="password" placeholder="apikey_…" autocomplete="off" spellcheck="false" /></label>
+        <label class="field">Anthropic key <input id="haikuKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" /></label>
+        <label class="remember"><input id="remember" type="checkbox" /> Remember both in this browser</label>
+        <p class="hint">Both keys go from this page to the proxy in <code>server.mjs</code>, which forwards each to its API and stores nothing.</p>
       </div>
-
-      <div class="card stats">
-        <div class="stat"><span class="label">Score</span><span id="score">0</span></div>
-        <div class="stat"><span class="label">Lines</span><span id="lines">0</span></div>
-        <div class="stat"><span class="label">Level</span><span id="level">1</span></div>
-        <div class="stat"><span class="label">Pieces</span><span id="pieces">0</span></div>
-        <div class="stat"><span class="label">Next</span><canvas id="next" width="80" height="50"></canvas></div>
-        <div class="stat"><span class="label">Jev calls</span><span id="calls">0</span></div>
-        <div class="stat"><span class="label">Avg latency</span><span id="latency">–</span></div>
-        <div class="stat"><span class="label">Input tokens</span><span id="tokens">0</span></div>
-        <div class="stat"><span class="label">Est. cost</span><span id="cost">$0.0000</span></div>
-        <div class="stat"><span class="label">Agrees w/ heuristic</span><span id="agree">–</span></div>
+      <div class="card" id="rules-card">
+        <h2>Rules</h2>
+        <label class="field">Starting gravity <span class="muted" id="gravityLabel"></span><input id="gravity" type="range" min="60" max="400" step="10" value="150" /></label>
+        <label class="field">Speed-up
+          <select id="speedup">
+            <option value="none">None: constant gravity</option>
+            <option value="gentle">Gentle: 10% faster every 30 s</option>
+            <option value="normal" selected>Normal: 15% faster every 20 s</option>
+            <option value="brutal">Brutal: 20% faster every 10 s</option>
+          </select>
+        </label>
+        <label class="field">Seed <input id="seed" type="number" value="42" /></label>
+        <label class="field">Time limit (min) <input id="limit" type="number" min="1" max="30" value="5" /></label>
+        <label class="field check"><input id="garbage" type="checkbox" checked /> Versus: cleared lines attack the opponent</label>
+        <label class="field check"><input id="lockstep" type="checkbox" /> Wait for answers (no gravity)</label>
       </div>
-
-      <div class="card" id="decision">
-        <h2 id="decisionTitle">Jev's move</h2>
-        <p id="chosen" class="muted">No move yet.</p>
-        <div class="bar-list" id="alternatives"></div>
+      <div class="vs">VS</div>
+      <div class="clock" id="clock">0:00</div>
+      <div class="level muted" id="level">Level 1 · 150 ms per row</div>
+      <div class="match-info" id="matchInfo"></div>
+      <div class="controls center-controls">
+        <button id="start" class="primary">Start battle</button>
+        <button id="stop" disabled>Stop</button>
       </div>
-
-      <div class="card" id="reads">
-        <h2>Jev's read of the board</h2>
-        <p id="readsNote" class="muted hidden">Only filled in when Jev decides. The heuristic makes no model calls.</p>
-        <div class="read">
-          <div class="read-label">Strategy</div>
-          <div class="bar-list" id="strategy"></div>
-        </div>
-        <div class="read">
-          <div class="read-label">Board health <span id="healthValue" class="muted"></span></div>
-          <div class="gauge"><div id="healthFill" class="gauge-fill"></div></div>
-          <div id="healthLegend" class="gauge-legend"></div>
-        </div>
-        <div class="read">
-          <div class="read-label">Next piece has a clean spot</div>
-          <div class="bar"><div id="nextFitFill" class="bar-fill noul"></div><span id="nextFitValue" class="bar-value"></span></div>
-        </div>
-      </div>
-
-      <details class="card" id="inspector">
-        <summary>Last request and response</summary>
-        <div class="inspector-grid">
-          <div>
-            <div class="read-label">Request to <code>POST /v1/systemone</code></div>
-            <pre id="reqJson">–</pre>
-          </div>
-          <div>
-            <div class="read-label">Response</div>
-            <pre id="resJson">–</pre>
-          </div>
-        </div>
-      </details>
-
+      <div id="result" class="result hidden"></div>
       <div id="error" class="error hidden" role="alert"></div>
+    </section>
+
+    <section class="player" id="right">
+      <div class="player-head">
+        <span class="badge haiku">Claude Haiku 4.5</span>
+        <span class="model muted">claude-haiku-4-5 · Anthropic</span>
+      </div>
+      <div class="board-wrap">
+        <canvas class="board" id="boardR" width="240" height="480" aria-label="Claude Haiku's board"></canvas>
+        <div class="overlay hidden" id="overlayR"></div>
+      </div>
+      <div class="incoming" id="incomingR"></div>
+      <div class="pstats" id="statsR"></div>
+      <div class="pmove muted" id="moveR">Waiting to start.</div>
     </section>
   </main>
 
   <footer class="foot">
-    <a href="battle.html">Battle: Jev vs Claude Haiku</a> ·
-    <a href="https://github.com/trungdq88/jev-tetris" target="_blank" rel="noopener">Source</a> ·
-    <a href="https://docs.typesafe.ai/primitives/choice" target="_blank" rel="noopener">Choice primitive</a> ·
-    <a href="https://docs.typesafe.ai/patterns/fan-out" target="_blank" rel="noopener">Speculative fan-out</a>
+    Each side sees the same board text and the same described placement list. Jev answers with a Choice
+    distribution; Haiku answers with an option id in plain text. Latency is part of the game.
   </footer>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="battle.js"></script>
 </body>
 </html>

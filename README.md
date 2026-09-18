@@ -4,7 +4,7 @@ Two AI models play Tetris against each other in real time. [Jev](https://docs.ty
 System One model, faces Claude Haiku 4.5. Same piece sequence, same options, same clock. Every line you
 clear lands on your opponent's board as a garbage row. Whoever tops out first loses.
 
-**Play it live:** [jev-tetris.vercel.app/battle.html](https://jev-tetris.vercel.app/battle.html)
+**Play it live:** [jev-tetris.vercel.app](https://jev-tetris.vercel.app)
 (bring a TypeSafe key and an Anthropic key; the proxy stores nothing).
 
 ![Jev vs Claude Haiku, versus mode](docs/battle.png)
@@ -54,8 +54,8 @@ cheap and its output is free, while Haiku bills both directions.
 
 ## Single player: Jev on its own
 
-[jev-tetris.vercel.app](https://jev-tetris.vercel.app) shows one Jev game with every decision
-explained: the chosen placement with confidence, the alternatives with their probabilities drawn as
+[jev-tetris.vercel.app/solo.html](https://jev-tetris.vercel.app/solo.html) shows one Jev game with
+every decision explained: the chosen placement with confidence, the alternatives with their probabilities drawn as
 ghost outlines on the board, Jev's read of the board (strategy, health, whether the next piece has a
 clean spot), token usage, cost, and the raw request and response.
 
@@ -98,7 +98,7 @@ Requires Node.js 20 or newer. There are no dependencies.
 
 ```sh
 npm start
-# open http://localhost:3000 (single player) or http://localhost:3000/battle.html (battle)
+# open http://localhost:3000 (battle) or http://localhost:3000/solo.html (single player)
 ```
 
 Or deploy your own copy to Vercel; the repo ships `api/` functions that act as the proxy:
@@ -144,9 +144,10 @@ lib/typesafe.mjs      TypeSafe proxy logic shared by server.mjs and api/
 lib/anthropic.mjs     Anthropic Messages API proxy for the battle
 api/*.js              the same proxies as Vercel serverless functions
 vercel.json           Vercel config (static public/, functions in api/)
-public/battle.html    battle page (+ battle.css, battle.js)
+public/index.html     battle page (+ battle.css, battle.js)
 public/players.js     Jev and Claude Haiku players for the battle
-public/index.html     single-player page (+ style.css, app.js)
+public/solo.html      single-player page (+ style.css, app.js)
+public/battle.html    redirect to the front page for old links
 public/tetris.js      pure engine: pieces, placements, outcome descriptions, garbage, seeded RNG
 public/jev.js         Jev request builder, API call with retry, answer mapping
 test/tetris.test.mjs  node --test suite
