@@ -52,6 +52,11 @@ canvas.board {
   padding: 12px 14px; text-align: center; font-weight: 600; line-height: 1.5;
 }
 .result small { display: block; color: var(--muted); font-weight: 400; font-size: 13px; }
+.compare { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.compare th, .compare td { padding: 2px 4px; text-align: right; white-space: nowrap; }
+.compare th:first-child { text-align: left; color: var(--muted); font-weight: 400; }
+.compare thead th { color: var(--text); font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.compare tbody tr:nth-child(even) { background: rgba(255,255,255,0.03); }
 
 @media (max-width: 1000px) {
   .arena { grid-template-columns: 1fr; }
@@ -61,7 +66,7 @@ canvas.board {
 /* ---- Presentation mode (?present): boards, clock, result. Nothing else. ---- */
 body.present { background: #0b0e15; min-height: 0; overflow: hidden; }
 body.present .top, body.present .foot, body.present #setup-card, body.present #rules-card, body.present .pmove { display: none; }
-body.present .arena { grid-template-columns: 300px 260px 300px; justify-content: center; gap: 28px; padding: 22px 24px 18px; }
+body.present .arena { grid-template-columns: 300px 260px 300px; justify-content: center; gap: 28px; padding: 18px 24px 16px; }
 body.present .center { gap: 10px; padding-top: 44px; }
 body.present .present-title { display: block; text-align: center; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .present-title { display: none; }
@@ -71,9 +76,11 @@ body.present .level { margin-top: -6px; }
 body.present .match-info { display: block; }
 .match-info { display: none; text-align: center; font-size: 12px; color: var(--muted); line-height: 1.5; }
 body.present .center-controls { justify-content: center; margin-top: 6px; }
-body.present.running .center-controls { display: none; }
-body.present .result { font-size: 15px; padding: 10px 12px; }
-body.present .result small { font-size: 12px; }
+body.present.running .center-controls, body.present.played .center-controls { display: none; }
+body.present .result { font-size: 14px; padding: 8px 10px; }
+body.present .result small { font-size: 11px; }
+body.present .compare { font-size: 11px; }
+body.present .compare th, body.present .compare td { padding: 1px 3px; }
 body.present .pstats { grid-template-columns: repeat(4, 1fr); gap: 6px 8px; }
 body.present .pstats .stat .label { font-size: 10px; }
 body.present .pstats .stat span:not(.label) { font-size: 15px; }

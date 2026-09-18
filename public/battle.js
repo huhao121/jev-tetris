@@ -91,8 +91,23 @@ function makeSide(id, player) {
     score: 0,
     over: false,
     lostAt: null,
-    stats: { calls: 0, latency: 0, missed: 0, invalid: 0, errors: 0, inputTokens: 0, outputTokens: 0, cost: 0, clears: [0, 0, 0, 0, 0] },
+    stats: freshStats(),
   };
+}
+
+function freshStats() {
+  return { calls: 0, latency: 0, minLatency: Infinity, maxLatency: 0, missed: 0, invalid: 0, errors: 0, inputTokens: 0, outputTokens: 0, cost: 0, clears: [0, 0, 0, 0, 0] };
+}
+
+function recordDecision(side, decision) {
+  const s = side.stats;
+  s.calls += 1;
+  s.latency += decision.latencyMs;
+  s.minLatency = Math.min(s.minLatency, decision.latencyMs);
+  s.maxLatency = Math.max(s.maxLatency, decision.latencyMs);
+  s.inputTokens += decision.inputTokens;
+  s.outputTokens += decision.outputTokens;
+  s.cost += decision.cost;
 }
 
 let sides = [];
@@ -136,7 +151,7 @@ function resetSide(side, seed) {
   side.score = 0;
   side.over = false;
   side.lostAt = null;
-  side.stats = { calls: 0, latency: 0, missed: 0, invalid: 0, errors: 0, inputTokens: 0, outputTokens: 0, cost: 0, clears: [0, 0, 0, 0, 0] };
+  side.stats = freshStats();
   side.overlay.classList.add("hidden");
   side.section.classList.remove("winner", "loser");
   side.moveEl.textContent = "Ready.";
@@ -200,30 +215,66 @@ function drawSide(side) {
   }
 }
 
+function fmtMs(ms) {
+  return `${Math.round(ms)} ms`;
+}
+
+function fmtUsd(v, digits = 4) {
+  return `$${v.toFixed(digits)}`;
+}
+
 function renderSideStats(side) {
   const s = side.stats;
-  const avg = s.calls ? `${Math.round(s.latency / s.calls)} ms` : "–";
+  const avg = s.calls ? fmtMs(s.latency / s.calls) : "–";
   const rows = PRESENT
     ? [
         ["Lines", side.lines],
         ["Pieces", side.pieces],
         ["Latency", avg],
         ["Missed", s.missed],
+        ["In tok", s.inputTokens.toLocaleString()],
+        ["Out tok", s.outputTokens.toLocaleString()],
+        ["Cost", fmtUsd(s.cost)],
+        ["Per move", s.calls ? fmtUsd(s.cost / s.calls, 5) : "–"],
       ]
     : [
-    ["Lines", side.lines],
-    ["Pieces", side.pieces],
-    ["Score", side.score],
-    ["Avg latency", avg],
-    ["Missed", s.missed],
-    ["Invalid", s.invalid + s.errors],
-    ["Tokens in", s.inputTokens.toLocaleString()],
-    ["Tokens out", s.outputTokens.toLocaleString()],
-    ["Cost", `$${s.cost.toFixed(4)}`],
-  ];
+        ["Lines", side.lines],
+        ["Pieces", side.pieces],
+        ["Score", side.score],
+        ["Avg latency", avg],
+        ["Missed", s.missed],
+        ["Invalid", s.invalid + s.errors],
+        ["Tokens in", s.inputTokens.toLocaleString()],
+        ["Tokens out", s.outputTokens.toLocaleString()],
+        ["Cost", fmtUsd(s.cost)],
+      ];
   side.statsEl.innerHTML = rows
     .map(([label, value]) => `<div class="stat"><span class="label">${label}</span><span>${value}</span></div>`)
     .join("");
+}
+
+// Side-by-side comparison for the result card.
+function comparisonTable(L, R) {
+  const row = (label, f) => `<tr><th>${label}</th><td>${f(L)}</td><td>${f(R)}</td></tr>`;
+  const avg = (s) => (s.stats.calls ? fmtMs(s.stats.latency / s.stats.calls) : "–");
+  const range = (s) => (s.stats.calls ? `${Math.round(s.stats.minLatency)}–${Math.round(s.stats.maxLatency)}` : "–");
+  return `<table class="compare">
+    <thead><tr><th></th><th>${L.player.name}</th><th>${R.player.name}</th></tr></thead>
+    <tbody>
+      ${row("Lines", (s) => s.lines)}
+      ${row("Pieces", (s) => s.pieces)}
+      ${row("Lines / piece", (s) => (s.pieces ? (s.lines / s.pieces).toFixed(2) : "–"))}
+      ${row("Avg latency", avg)}
+      ${row("Min–max ms", range)}
+      ${row("Missed", (s) => s.stats.missed)}
+      ${row("Invalid", (s) => s.stats.invalid + s.stats.errors)}
+      ${row("Model calls", (s) => s.stats.calls)}
+      ${row("Tokens in", (s) => s.stats.inputTokens.toLocaleString())}
+      ${row("Tokens out", (s) => s.stats.outputTokens.toLocaleString())}
+      ${row("Cost", (s) => fmtUsd(s.stats.cost))}
+      ${row("Cost / move", (s) => (s.stats.calls ? fmtUsd(s.stats.cost / s.stats.calls, 5) : "–"))}
+    </tbody>
+  </table>`;
 }
 
 function showError(message) {
@@ -314,11 +365,7 @@ async function runSide(side, { signal, lockstep }) {
     const a = side.active;
     let landed;
     if (outcome === "decided" && decision.chosen) {
-      side.stats.calls += 1;
-      side.stats.latency += decision.latencyMs;
-      side.stats.inputTokens += decision.inputTokens;
-      side.stats.outputTokens += decision.outputTokens;
-      side.stats.cost += decision.cost;
+      recordDecision(side, decision);
       const t = decision.chosen;
       const cells = PIECES[piece][t.rotation].cells;
       if (!collides(side.board, cells, t.x, a.y)) {
@@ -348,11 +395,7 @@ async function runSide(side, { signal, lockstep }) {
     } else {
       if (outcome === "decided") {
         // Model replied but named no valid option.
-        side.stats.calls += 1;
-        side.stats.latency += decision.latencyMs;
-        side.stats.inputTokens += decision.inputTokens;
-        side.stats.outputTokens += decision.outputTokens;
-        side.stats.cost += decision.cost;
+        recordDecision(side, decision);
         side.stats.invalid += 1;
         side.moveEl.textContent = `${piece}: ${decision.note}; piece dropped where it was`;
       } else if (!side.moveEl.textContent.startsWith("Error")) {
@@ -453,16 +496,15 @@ function finish(winner, loser, reason) {
     winner.section.classList.add("winner");
     loser?.section.classList.add("loser");
   }
-  const line = (s) =>
-    `${s.player.name}: ${s.lines} lines, ${s.pieces} pieces, avg ${s.stats.calls ? Math.round(s.stats.latency / s.stats.calls) : 0} ms, ${s.stats.missed} missed, $${s.stats.cost.toFixed(4)}`;
   const gravityNote = battle.lockstep
     ? "lockstep, no gravity"
-    : `gravity ${battle.gravityMs} → ${gravityNow()} ms/row, reached level ${currentLevel()}`;
-  ui.result.innerHTML = `${reason}<small>${formatClock(elapsed)} elapsed · seed ${ui.seed.value} · ${gravityNote}</small><small>${line(L)}</small><small>${line(R)}</small>`;
+    : `gravity ${battle.gravityMs} → ${gravityNow()} ms/row, level ${currentLevel()}`;
+  ui.result.innerHTML = `${reason}<small>${formatClock(elapsed)} elapsed · seed ${ui.seed.value} · ${gravityNote}</small>${comparisonTable(L, R)}`;
   ui.result.classList.remove("hidden");
   ui.start.disabled = false;
   ui.stop.disabled = true;
   document.body.classList.remove("running");
+  document.body.classList.add("played");
   battle = null;
 }
 
