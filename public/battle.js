@@ -57,7 +57,12 @@ const ui = {
   clock: $("clock"),
   result: $("result"),
   error: $("error"),
+  matchInfo: $("matchInfo"),
 };
+
+// ?present strips the page down to the boards and the clock for recordings.
+const PRESENT = new URLSearchParams(location.search).has("present");
+if (PRESENT) document.body.classList.add("present");
 
 // ---- Per-player state ---------------------------------------------------------------
 
@@ -198,7 +203,14 @@ function drawSide(side) {
 function renderSideStats(side) {
   const s = side.stats;
   const avg = s.calls ? `${Math.round(s.latency / s.calls)} ms` : "–";
-  const rows = [
+  const rows = PRESENT
+    ? [
+        ["Lines", side.lines],
+        ["Pieces", side.pieces],
+        ["Latency", avg],
+        ["Missed", s.missed],
+      ]
+    : [
     ["Lines", side.lines],
     ["Pieces", side.pieces],
     ["Score", side.score],
@@ -450,10 +462,17 @@ function finish(winner, loser, reason) {
   ui.result.classList.remove("hidden");
   ui.start.disabled = false;
   ui.stop.disabled = true;
+  document.body.classList.remove("running");
   battle = null;
 }
 
-function startBattle() {
+function describeSpeedup(name) {
+  const cfg = SPEEDUPS[name] || SPEEDUPS.normal;
+  if (!Number.isFinite(cfg.everyMs)) return "constant gravity";
+  return `${Math.round((1 - cfg.factor) * 100)}% faster every ${cfg.everyMs / 1000} s`;
+}
+
+async function startBattle() {
   const jevKey = ui.jevKey.value.trim();
   const haikuKey = ui.haikuKey.value.trim();
   if (!jevKey || !haikuKey) {
@@ -472,6 +491,16 @@ function startBattle() {
   ui.result.classList.add("hidden");
   ui.start.disabled = true;
   ui.stop.disabled = false;
+  ui.matchInfo.textContent = lockstep
+    ? `seed ${seed} · lockstep, no gravity`
+    : `seed ${seed} · ${gravityMs} ms per row, ${describeSpeedup(ui.speedup.value)}`;
+  if (PRESENT) {
+    document.body.classList.add("running");
+    for (const n of [3, 2, 1]) {
+      ui.clock.textContent = String(n);
+      await sleep(800);
+    }
+  }
   const abort = new AbortController();
   battle = { startedAt: performance.now(), abort, timer: null, limitMs, gravityMs, speedup, lockstep };
   renderLevel();

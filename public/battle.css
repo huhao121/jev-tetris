@@ -57,3 +57,26 @@ canvas.board {
   .arena { grid-template-columns: 1fr; }
   .center { order: -1; }
 }
+
+/* ---- Presentation mode (?present): boards, clock, result. Nothing else. ---- */
+body.present { background: #0b0e15; min-height: 0; overflow: hidden; }
+body.present .top, body.present .foot, body.present #setup-card, body.present #rules-card, body.present .pmove { display: none; }
+body.present .arena { grid-template-columns: 300px 260px 300px; justify-content: center; gap: 28px; padding: 22px 24px 18px; }
+body.present .center { gap: 10px; padding-top: 44px; }
+body.present .present-title { display: block; text-align: center; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.present-title { display: none; }
+body.present .vs { font-size: 40px; }
+body.present .clock { font-size: 34px; }
+body.present .level { margin-top: -6px; }
+body.present .match-info { display: block; }
+.match-info { display: none; text-align: center; font-size: 12px; color: var(--muted); line-height: 1.5; }
+body.present .center-controls { justify-content: center; margin-top: 6px; }
+body.present.running .center-controls { display: none; }
+body.present .result { font-size: 15px; padding: 10px 12px; }
+body.present .result small { font-size: 12px; }
+body.present .pstats { grid-template-columns: repeat(4, 1fr); gap: 6px 8px; }
+body.present .pstats .stat .label { font-size: 10px; }
+body.present .pstats .stat span:not(.label) { font-size: 15px; }
+body.present .badge { font-size: 17px; }
+body.present .player { gap: 8px; }
+body.present .error { font-size: 12px; }
