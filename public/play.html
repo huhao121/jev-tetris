@@ -46,6 +46,16 @@
 
     <section class="center">
       <div class="present-title">Human vs Jev</div>
+      <div class="vs">VS</div>
+      <div class="clock" id="clock">0:00</div>
+      <div class="level muted" id="level"></div>
+      <div class="match-info" id="matchInfo"></div>
+      <div class="controls center-controls">
+        <button id="start" class="primary">Start</button>
+        <button id="stop" disabled>Give up</button>
+      </div>
+      <div id="result" class="result hidden"></div>
+      <div id="error" class="error hidden" role="alert"></div>
       <div class="card" id="setup-card">
         <h2>Jev's key</h2>
         <label class="field">TypeSafe key <input id="jevKey" type="password" placeholder="apikey_…" autocomplete="off" spellcheck="false" /></label>
@@ -78,16 +88,6 @@
         <label class="field check"><input id="garbage" type="checkbox" checked /> Versus: cleared lines attack the opponent</label>
         <label class="field check"><input id="jevGravity" type="checkbox" checked /> Jev's pieces fall too (untick to let Jev think freely)</label>
       </div>
-      <div class="vs">VS</div>
-      <div class="clock" id="clock">0:00</div>
-      <div class="level muted" id="level"></div>
-      <div class="match-info" id="matchInfo"></div>
-      <div class="controls center-controls">
-        <button id="start" class="primary">Start</button>
-        <button id="stop" disabled>Give up</button>
-      </div>
-      <div id="result" class="result hidden"></div>
-      <div id="error" class="error hidden" role="alert"></div>
     </section>
 
     <section class="player" id="right">
