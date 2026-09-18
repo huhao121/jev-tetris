@@ -52,6 +52,15 @@ than it can clear from above. Missed deadlines bite both sides as the stack rise
 top a piece has only a few rows to fall. Per move, Jev costs about 20x less: its input tokens are
 cheap and its output is free, while Haiku bills both directions.
 
+## Play against Jev yourself
+
+[jev-tetris.vercel.app/play.html](https://jev-tetris.vercel.app/play.html) puts you on the left
+and Jev on the right with the same versus rules: shared piece sequence, rising gravity, cleared
+lines become garbage for the other side, first to top out loses. Arrow keys move, up or X rotates,
+Z rotates back, down soft-drops, space hard-drops; on touch screens a button row appears under the
+board. You get a ghost piece and a short lock delay. Gravity starts gentler than in the model battle
+(500 ms per row, 10% faster every 30 s) and is adjustable. Only a TypeSafe key is needed.
+
 ## Single player: Jev on its own
 
 [jev-tetris.vercel.app/solo.html](https://jev-tetris.vercel.app/solo.html) shows one Jev game with
@@ -145,6 +154,8 @@ lib/anthropic.mjs     Anthropic Messages API proxy for the battle
 api/*.js              the same proxies as Vercel serverless functions
 vercel.json           Vercel config (static public/, functions in api/)
 public/index.html     battle page (+ battle.css, battle.js)
+public/play.html      human vs Jev (+ play.js)
+public/arena.js       shared two-board machinery: sides, drawing, stats, garbage, gravity ramp, model loop
 public/players.js     Jev and Claude Haiku players for the battle
 public/solo.html      single-player page (+ style.css, app.js)
 public/battle.html    redirect to the front page for old links

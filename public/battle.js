@@ -1,47 +1,29 @@
-// Real-time Tetris battle: two players, one seeded piece sequence, one clock.
-//
-// Each side runs its own game loop. When a piece spawns, the player's model is
-// asked at once; meanwhile gravity pulls the piece down one row every
-// `gravityMs`. When the answer arrives, the piece slides to the chosen column
-// and rotation (if it still fits at its current height) and hard-drops. If
-// the piece lands before the answer arrives, it locks where it is: a missed
-// deadline. Gravity strengthens on a shared schedule as the battle goes on,
-// so the deadline tightens for both sides equally. When one side tops out,
-// the other must survive past the same piece count to win (a faster player
-// cycles pieces faster, so wall-clock survival would reward slowness); at
-// the time limit, more lines wins.
+// Real-time Tetris battle: Jev vs Claude Haiku on one seeded piece sequence
+// and one clock. Each side runs its own loop (see arena.js): the model is asked
+// when a piece spawns, gravity keeps pulling the piece down meanwhile, and a
+// piece that lands before the answer arrives locks where it is. Gravity
+// strengthens on a shared schedule. In versus mode cleared lines become
+// garbage for the opponent and the first to top out loses; with independent
+// boards the survivor must outlast the loser's piece count.
 
-import {
-  WIDTH,
-  HEIGHT,
-  PIECES,
-  PIECE_COLORS,
-  emptyBoard,
-  enumeratePlacements,
-  lockPiece,
-  clearLines,
-  boardStats,
-  collides,
-  dropY,
-  makeBag,
-  seededRandom,
-  addGarbage,
-  GARBAGE,
-  scoreForLines,
-  describePlacement,
-} from "./tetris.js";
 import { createJevPlayer, createHaikuPlayer } from "./players.js";
+import {
+  SPEEDUPS,
+  PRESENT,
+  sleep,
+  formatClock,
+  describeSpeedup,
+  createRamp,
+  makeSide,
+  resetSide,
+  previewSide,
+  runModelSide,
+  markTopOut,
+  comparisonTable,
+} from "./arena.js";
 
 const $ = (id) => document.getElementById(id);
-const SPEEDUPS = {
-  none: { everyMs: Infinity, factor: 1 },
-  gentle: { everyMs: 30_000, factor: 0.9 },
-  normal: { everyMs: 20_000, factor: 0.85 },
-  brutal: { everyMs: 10_000, factor: 0.8 },
-};
-const MIN_GRAVITY_MS = 40;
 const STORAGE = { jev: "jev_tetris_api_key", haiku: "jev_tetris_anthropic_key" };
-const SPAWN_X = 3;
 
 const ui = {
   jevKey: $("jevKey"),
@@ -63,238 +45,28 @@ const ui = {
   matchInfo: $("matchInfo"),
 };
 
-// ?present strips the page down to the boards and the clock for recordings.
-const PRESENT = new URLSearchParams(location.search).has("present");
-if (PRESENT) document.body.classList.add("present");
-
-// ---- Per-player state ---------------------------------------------------------------
-
-function makeSide(id, player) {
-  const canvas = $(`board${id}`);
+function sideEls(id) {
   return {
-    id,
-    player,
-    canvas,
-    ctx: canvas.getContext("2d"),
-    cell: canvas.width / WIDTH,
+    canvas: $(`board${id}`),
     overlay: $(`overlay${id}`),
     incomingEl: $(`incoming${id}`),
     statsEl: $(`stats${id}`),
     moveEl: $(`move${id}`),
     section: $(id === "L" ? "left" : "right"),
-    board: emptyBoard(),
-    random: null,
-    garbageRandom: null,
-    pendingGarbage: 0,
-    opponent: null,
-    bag: [],
-    current: null,
-    next: null,
-    active: null, // { piece, rotation, x, y }
-    target: null, // placement cells to outline once decided
-    flash: [],
-    lines: 0,
-    pieces: 0,
-    score: 0,
-    over: false,
-    lostAt: null,
-    stats: freshStats(),
   };
-}
-
-function freshStats() {
-  return { calls: 0, latency: 0, minLatency: Infinity, maxLatency: 0, missed: 0, invalid: 0, errors: 0, inputTokens: 0, outputTokens: 0, cost: 0, sent: 0, received: 0, clears: [0, 0, 0, 0, 0] };
-}
-
-function recordDecision(side, decision) {
-  const s = side.stats;
-  s.calls += 1;
-  s.latency += decision.latencyMs;
-  s.minLatency = Math.min(s.minLatency, decision.latencyMs);
-  s.maxLatency = Math.max(s.maxLatency, decision.latencyMs);
-  s.inputTokens += decision.inputTokens;
-  s.outputTokens += decision.outputTokens;
-  s.cost += decision.cost;
 }
 
 let sides = [];
-let battle = null; // { startedAt, abort, timer, limitMs, gravityMs, speedup, lockstep }
-
-// Level 1 at the start; one level up every `everyMs` of the shared clock.
-function currentLevel() {
-  if (!battle) return 1;
-  const elapsed = performance.now() - battle.startedAt;
-  return Number.isFinite(battle.speedup.everyMs) ? Math.floor(elapsed / battle.speedup.everyMs) + 1 : 1;
-}
+let battle = null; // { ramp, abort, timer, limitMs, lockstep, garbage }
 
 function gravityNow() {
-  if (!battle) return Number(ui.gravity.value);
-  const ms = battle.gravityMs * Math.pow(battle.speedup.factor, currentLevel() - 1);
-  return Math.max(MIN_GRAVITY_MS, Math.round(ms));
+  return battle ? battle.ramp.gravityNow() : Number(ui.gravity.value);
 }
 
 function renderLevel() {
-  const level = currentLevel();
+  const level = battle ? battle.ramp.level() : 1;
   ui.level.textContent = `Level ${level} · ${gravityNow()} ms per row`;
   ui.level.classList.toggle("hot", level >= 4);
-}
-
-function nextPiece(side) {
-  if (side.bag.length === 0) side.bag = makeBag(side.random);
-  return side.bag.pop();
-}
-
-function resetSide(side, seed) {
-  side.board = emptyBoard();
-  side.random = seededRandom(seed);
-  side.garbageRandom = seededRandom(seed * 7919 + (side.id === "L" ? 1 : 2));
-  side.pendingGarbage = 0;
-  side.bag = [];
-  side.current = nextPiece(side);
-  side.next = nextPiece(side);
-  side.active = null;
-  side.target = null;
-  side.flash = [];
-  side.lines = 0;
-  side.pieces = 0;
-  side.score = 0;
-  side.over = false;
-  side.lostAt = null;
-  side.stats = freshStats();
-  side.overlay.classList.add("hidden");
-  side.section.classList.remove("winner", "loser", "hit");
-  side.incomingEl.textContent = "";
-  side.moveEl.textContent = "Ready.";
-  drawSide(side);
-  renderSideStats(side);
-}
-
-// ---- Rendering ------------------------------------------------------------------------
-
-function drawSide(side) {
-  const { ctx, cell, canvas } = side;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = "rgba(255,255,255,0.05)";
-  ctx.lineWidth = 1;
-  for (let x = 1; x < WIDTH; x++) {
-    ctx.beginPath();
-    ctx.moveTo(x * cell, 0);
-    ctx.lineTo(x * cell, canvas.height);
-    ctx.stroke();
-  }
-  for (let y = 1; y < HEIGHT; y++) {
-    ctx.beginPath();
-    ctx.moveTo(0, y * cell);
-    ctx.lineTo(canvas.width, y * cell);
-    ctx.stroke();
-  }
-  const paint = (x, y, color, alpha = 1, outline = false) => {
-    ctx.globalAlpha = alpha;
-    if (outline) {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x * cell + 2, y * cell + 2, cell - 4, cell - 4);
-    } else {
-      ctx.fillStyle = color;
-      ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
-      ctx.fillStyle = "rgba(255,255,255,0.18)";
-      ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, 3);
-    }
-    ctx.globalAlpha = 1;
-  };
-  for (let y = 0; y < HEIGHT; y++) {
-    for (let x = 0; x < WIDTH; x++) {
-      const c = side.board[y][x];
-      if (c) paint(x, y, side.flash.includes(y) ? "#ffffff" : c === GARBAGE ? "#5b6472" : PIECE_COLORS[c]);
-    }
-  }
-  if (side.target) for (const [x, y] of side.target) paint(x, y, "#ffffff", 0.7, true);
-  if (side.active) {
-    const { piece, rotation, x, y } = side.active;
-    for (const [cx, cy] of PIECES[piece][rotation].cells) if (y + cy >= 0) paint(x + cx, y + cy, PIECE_COLORS[piece]);
-  }
-  // next piece preview in the top-right corner
-  if (side.next) {
-    const state = PIECES[side.next][0];
-    const s = cell * 0.5;
-    const ox = canvas.width - state.width * s - 6;
-    ctx.globalAlpha = 0.85;
-    ctx.fillStyle = PIECE_COLORS[side.next];
-    for (const [cx, cy] of state.cells) ctx.fillRect(ox + cx * s, 6 + cy * s, s - 1, s - 1);
-    ctx.globalAlpha = 1;
-  }
-}
-
-function fmtMs(ms) {
-  return `${Math.round(ms)} ms`;
-}
-
-function fmtUsd(v, digits = 4) {
-  return `$${v.toFixed(digits)}`;
-}
-
-function renderSideStats(side) {
-  const s = side.stats;
-  const avg = s.calls ? fmtMs(s.latency / s.calls) : "–";
-  const rows = PRESENT
-    ? [
-        ["Lines", side.lines],
-        ["Pieces", side.pieces],
-        ["Sent", s.sent],
-        ["Received", s.received],
-        ["Latency", avg],
-        ["Missed", s.missed],
-        ["In tok", s.inputTokens.toLocaleString()],
-        ["Out tok", s.outputTokens.toLocaleString()],
-        ["Cost", fmtUsd(s.cost)],
-        ["Per move", s.calls ? fmtUsd(s.cost / s.calls, 5) : "–"],
-        ["Calls", s.calls],
-        ["Invalid", s.invalid + s.errors],
-      ]
-    : [
-        ["Lines", side.lines],
-        ["Pieces", side.pieces],
-        ["Score", side.score],
-        ["Sent", s.sent],
-        ["Received", s.received],
-        ["Avg latency", avg],
-        ["Missed", s.missed],
-        ["Invalid", s.invalid + s.errors],
-        ["Tokens in", s.inputTokens.toLocaleString()],
-        ["Tokens out", s.outputTokens.toLocaleString()],
-        ["Cost", fmtUsd(s.cost)],
-        ["Per move", s.calls ? fmtUsd(s.cost / s.calls, 5) : "–"],
-      ];
-  side.statsEl.innerHTML = rows
-    .map(([label, value]) => `<div class="stat"><span class="label">${label}</span><span>${value}</span></div>`)
-    .join("");
-}
-
-// Side-by-side comparison for the result card.
-function comparisonTable(L, R) {
-  const row = (label, f) => `<tr><th>${label}</th><td>${f(L)}</td><td>${f(R)}</td></tr>`;
-  const avg = (s) => (s.stats.calls ? fmtMs(s.stats.latency / s.stats.calls) : "–");
-  const range = (s) => (s.stats.calls ? `${Math.round(s.stats.minLatency)}–${Math.round(s.stats.maxLatency)}` : "–");
-  return `<table class="compare">
-    <colgroup><col class="metric" /><col /><col /></colgroup>
-    <thead><tr><th></th><th>${L.player.short || L.player.name}</th><th>${R.player.short || R.player.name}</th></tr></thead>
-    <tbody>
-      ${row("Lines", (s) => s.lines)}
-      ${row("Pieces", (s) => s.pieces)}
-      ${row("Lines / piece", (s) => (s.pieces ? (s.lines / s.pieces).toFixed(2) : "–"))}
-      ${row("Garbage sent", (s) => s.stats.sent)}
-      ${row("Garbage received", (s) => s.stats.received)}
-      ${row("Avg latency", avg)}
-      ${row("Min–max ms", range)}
-      ${row("Missed", (s) => s.stats.missed)}
-      ${row("Invalid", (s) => s.stats.invalid + s.stats.errors)}
-      ${row("Model calls", (s) => s.stats.calls)}
-      ${row("Tokens in", (s) => s.stats.inputTokens.toLocaleString())}
-      ${row("Tokens out", (s) => s.stats.outputTokens.toLocaleString())}
-      ${row("Cost", (s) => fmtUsd(s.stats.cost))}
-      ${row("Cost / move", (s) => (s.stats.calls ? fmtUsd(s.stats.cost / s.stats.calls, 5) : "–"))}
-    </tbody>
-  </table>`;
 }
 
 function showError(message) {
@@ -306,196 +78,8 @@ function hideError() {
   ui.error.classList.add("hidden");
 }
 
-function formatClock(ms) {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// ---- One player's real-time loop ------------------------------------------------------
-
-function renderIncoming(side) {
-  side.incomingEl.textContent = side.pendingGarbage > 0 ? `▼ ${side.pendingGarbage} incoming` : "";
-}
-
-function sendGarbage(from, count) {
-  const to = from.opponent;
-  if (!to || to.over || count <= 0) return;
-  to.pendingGarbage += count;
-  from.stats.sent += count;
-  renderIncoming(to);
-}
-
-// Incoming garbage lands when the receiver's piece has locked, before the next spawn.
-function applyGarbage(side) {
-  const n = side.pendingGarbage;
-  if (n <= 0) return false;
-  side.pendingGarbage = 0;
-  const gap = Math.floor(side.garbageRandom() * WIDTH);
-  const { board, overflow } = addGarbage(side.board, n, gap);
-  side.board = board;
-  side.stats.received += n;
-  renderIncoming(side);
-  side.section.classList.add("hit");
-  setTimeout(() => side.section.classList.remove("hit"), 350);
-  drawSide(side);
-  renderSideStats(side);
-  return overflow;
-}
-
-async function runSide(side, { signal, lockstep }) {
-  while (!side.over && !signal.aborted) {
-    if (applyGarbage(side)) {
-      topOut(side);
-      return;
-    }
-    const piece = side.current;
-    const spawn = PIECES[piece][0];
-    if (collides(side.board, spawn.cells, SPAWN_X, 0)) {
-      topOut(side);
-      return;
-    }
-    const placements = enumeratePlacements(side.board, piece);
-    if (placements.length === 0) {
-      topOut(side);
-      return;
-    }
-    side.active = { piece, rotation: 0, x: SPAWN_X, y: 0 };
-    side.target = null;
-    drawSide(side);
-
-    // Ask the model right away; the piece falls while we wait.
-    const gameInfo = { board: side.board, piece, nextPiece: side.next, stats: boardStats(side.board), linesCleared: side.lines };
-    const askedAt = performance.now();
-    let decision = null;
-    let settled = false;
-    const pending = side.player
-      .decide(gameInfo, placements, signal)
-      .then((d) => {
-        decision = d;
-      })
-      .catch((err) => {
-        if (!signal.aborted) {
-          side.stats.errors += 1;
-          side.moveEl.textContent = `Error: ${err.message}`;
-          if (err.status === 401 || err.status === 403) showError(`${side.player.name}: ${err.message}`);
-        }
-      })
-      .finally(() => {
-        settled = true;
-      });
-
-    let outcome = null; // "decided" | "missed"
-    if (lockstep) {
-      await pending;
-      outcome = decision ? "decided" : "missed";
-    } else {
-      // Gravity loop: one row per gravityNow() until the answer arrives or the piece lands.
-      while (!signal.aborted) {
-        if (settled) {
-          outcome = decision ? "decided" : "missed";
-          break;
-        }
-        await sleep(gravityNow());
-        if (signal.aborted) return;
-        if (settled) {
-          outcome = decision ? "decided" : "missed";
-          break;
-        }
-        const a = side.active;
-        if (!collides(side.board, PIECES[a.piece][a.rotation].cells, a.x, a.y + 1)) {
-          a.y += 1;
-          drawSide(side);
-        } else {
-          outcome = "missed";
-          break;
-        }
-      }
-    }
-    if (signal.aborted) return;
-
-    const a = side.active;
-    let landed;
-    if (outcome === "decided" && decision.chosen) {
-      recordDecision(side, decision);
-      const t = decision.chosen;
-      const cells = PIECES[piece][t.rotation].cells;
-      if (!collides(side.board, cells, t.x, a.y)) {
-        // Slide into place quickly, then drop.
-        side.target = t.cells;
-        a.rotation = t.rotation;
-        while (a.x !== t.x && !signal.aborted) {
-          a.x += Math.sign(t.x - a.x);
-          drawSide(side);
-          await sleep(18);
-        }
-        const restY = dropY(side.board, cells, t.x, a.y);
-        while (a.y < restY && !signal.aborted) {
-          a.y += 1;
-          drawSide(side);
-          await sleep(10);
-        }
-        landed = { rotation: t.rotation, x: t.x, y: restY };
-        const d = describePlacement(t);
-        side.moveEl.textContent = `${piece} → ${d.where} in ${Math.round(decision.latencyMs)} ms (${decision.note})`;
-      } else {
-        // Answer came too late for the rotation to fit at this height: lock as is.
-        side.stats.missed += 1;
-        landed = { rotation: a.rotation, x: a.x, y: dropY(side.board, PIECES[piece][a.rotation].cells, a.x, a.y) };
-        side.moveEl.textContent = `${piece}: answer arrived too late to fit (${Math.round(decision.latencyMs)} ms)`;
-      }
-    } else {
-      if (outcome === "decided") {
-        // Model replied but named no valid option.
-        recordDecision(side, decision);
-        side.stats.invalid += 1;
-        side.moveEl.textContent = `${piece}: ${decision.note}; piece dropped where it was`;
-      } else if (!side.moveEl.textContent.startsWith("Error")) {
-        side.stats.missed += 1;
-        side.moveEl.textContent = `${piece}: no answer before landing (${Math.round(performance.now() - askedAt)} ms); locked in place`;
-      } else {
-        side.stats.missed += 1;
-      }
-      landed = { rotation: a.rotation, x: a.x, y: dropY(side.board, PIECES[piece][a.rotation].cells, a.x, a.y) };
-    }
-    if (signal.aborted) return;
-
-    side.active = null;
-    side.target = null;
-    const locked = lockPiece(side.board, piece, landed.rotation, landed.x, landed.y);
-    const { board, cleared, rows } = clearLines(locked);
-    if (cleared > 0) {
-      side.board = locked;
-      side.flash = rows;
-      drawSide(side);
-      await sleep(90);
-      side.flash = [];
-    }
-    side.board = board;
-    side.lines += cleared;
-    side.stats.clears[cleared] += 1;
-    if (battle?.garbage && cleared > 0) sendGarbage(side, cleared);
-    side.score += scoreForLines(cleared, Math.floor(side.lines / 10) + 1);
-    side.pieces += 1;
-    side.current = side.next;
-    side.next = nextPiece(side);
-    drawSide(side);
-    renderSideStats(side);
-    if (battle) checkEnd();
-  }
-}
-
 function topOut(side) {
-  side.over = true;
-  side.lostAt = performance.now() - battle.startedAt;
-  side.active = null;
-  side.target = null;
-  drawSide(side);
-  side.overlay.textContent = `Topped out at ${formatClock(side.lostAt)}`;
-  side.overlay.classList.remove("hidden");
-  side.section.classList.add("loser");
-  renderSideStats(side);
+  markTopOut(side, battle ? battle.ramp.elapsed() : 0);
   checkEnd();
 }
 
@@ -508,9 +92,6 @@ function checkEnd(timeUp = false) {
   const oneOver = L.over || R.over;
   if (!oneOver && !timeUp) return;
   if (oneOver && !bothOver && !timeUp) {
-    // One side is out. A fast player cycles through more pieces per minute, so
-    // wall-clock survival would reward slowness; pieces survived is the fair
-    // clock in both modes. The survivor wins once it passes the loser's count.
     const loser = L.over ? L : R;
     const survivor = loser === L ? R : L;
     if (battle.garbage) {
@@ -518,6 +99,8 @@ function checkEnd(timeUp = false) {
       finish(survivor, loser, `${survivor.player.name} wins: ${loser.player.name} topped out first`);
       return;
     }
+    // Independent boards: a fast player cycles through more pieces per minute, so
+    // wall-clock survival would reward slowness; pieces survived is the clock.
     if (survivor.pieces > loser.pieces) {
       finish(survivor, loser, `${survivor.player.name} wins: survived past ${loser.pieces} pieces`);
     } else {
@@ -550,13 +133,13 @@ function finish(winner, loser, reason) {
   const [L, R] = sides;
   battle.abort.abort();
   clearInterval(battle.timer);
-  const elapsed = performance.now() - battle.startedAt;
+  const elapsed = battle.ramp.elapsed();
   if (winner) {
     winner.section.classList.add("winner");
     loser?.section.classList.add("loser");
   }
   const gravityNote =
-    (battle.lockstep ? "lockstep, no gravity" : `gravity ${battle.gravityMs} → ${gravityNow()} ms/row, level ${currentLevel()}`) +
+    (battle.lockstep ? "lockstep, no gravity" : `gravity ${battle.ramp.gravityMs} → ${gravityNow()} ms/row, level ${battle.ramp.level()}`) +
     (battle.garbage ? ", versus" : "");
   ui.result.innerHTML = `${reason}<small>${formatClock(elapsed)} elapsed · seed ${ui.seed.value} · ${gravityNote}</small>${comparisonTable(L, R)}`;
   ui.result.classList.remove("hidden");
@@ -565,12 +148,6 @@ function finish(winner, loser, reason) {
   document.body.classList.remove("running");
   document.body.classList.add("played");
   battle = null;
-}
-
-function describeSpeedup(name) {
-  const cfg = SPEEDUPS[name] || SPEEDUPS.normal;
-  if (!Number.isFinite(cfg.everyMs)) return "constant gravity";
-  return `${Math.round((1 - cfg.factor) * 100)}% faster every ${cfg.everyMs / 1000} s`;
 }
 
 async function startBattle() {
@@ -588,7 +165,7 @@ async function startBattle() {
   const lockstep = ui.lockstep.checked;
   const garbage = ui.garbage.checked;
   const limitMs = Math.max(1, Number(ui.limit.value) || 5) * 60_000;
-  sides = [makeSide("L", createJevPlayer(jevKey)), makeSide("R", createHaikuPlayer(haikuKey))];
+  sides = [makeSide("L", createJevPlayer(jevKey), sideEls("L")), makeSide("R", createHaikuPlayer(haikuKey), sideEls("R"))];
   sides[0].opponent = sides[1];
   sides[1].opponent = sides[0];
   for (const s of sides) resetSide(s, seed);
@@ -606,16 +183,17 @@ async function startBattle() {
     }
   }
   const abort = new AbortController();
-  battle = { startedAt: performance.now(), abort, timer: null, limitMs, gravityMs, speedup, lockstep, garbage };
+  battle = { ramp: createRamp({ gravityMs, speedup }), abort, timer: null, limitMs, lockstep, garbage };
   renderLevel();
   battle.timer = setInterval(() => {
     if (!battle) return;
-    const elapsed = performance.now() - battle.startedAt;
+    const elapsed = battle.ramp.elapsed();
     ui.clock.textContent = formatClock(elapsed);
     renderLevel();
     if (elapsed >= battle.limitMs) checkEnd(true);
   }, 250);
-  for (const s of sides) runSide(s, { signal: abort.signal, lockstep });
+  const ctx = { signal: abort.signal, lockstep, gravityNow, garbage, onTopOut: topOut, onPiece: () => checkEnd(), showError };
+  for (const s of sides) runModelSide(s, ctx);
 }
 
 function stopBattle() {
@@ -659,11 +237,5 @@ try {
   /* storage unavailable */
 }
 
-sides = [makeSide("L", null), makeSide("R", null)];
-for (const s of sides) {
-  s.random = seededRandom(Number(ui.seed.value) || 42);
-  s.current = nextPiece(s);
-  s.next = nextPiece(s);
-  drawSide(s);
-  renderSideStats(s);
-}
+sides = [makeSide("L", { name: "Jev", short: "Jev" }, sideEls("L")), makeSide("R", { name: "Claude Haiku 4.5", short: "Haiku 4.5" }, sideEls("R"))];
+for (const s of sides) previewSide(s, Number(ui.seed.value) || 42);
