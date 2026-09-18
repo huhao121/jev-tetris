@@ -37,14 +37,15 @@
     </section>
 
     <section class="center">
-      <div class="card">
+      <div class="present-title">Real-time Tetris</div>
+      <div class="card" id="setup-card">
         <h2>Keys</h2>
         <label class="field">TypeSafe key <input id="jevKey" type="password" placeholder="apikey_…" autocomplete="off" spellcheck="false" /></label>
         <label class="field">Anthropic key <input id="haikuKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" /></label>
         <label class="remember"><input id="remember" type="checkbox" /> Remember both in this browser</label>
         <p class="hint">Both keys go from this page to the proxy in <code>server.mjs</code>, which forwards each to its API and stores nothing.</p>
       </div>
-      <div class="card">
+      <div class="card" id="rules-card">
         <h2>Rules</h2>
         <label class="field">Starting gravity <span class="muted" id="gravityLabel"></span><input id="gravity" type="range" min="60" max="400" step="10" value="150" /></label>
         <label class="field">Speed-up
@@ -62,6 +63,7 @@
       <div class="vs">VS</div>
       <div class="clock" id="clock">0:00</div>
       <div class="level muted" id="level">Level 1 · 150 ms per row</div>
+      <div class="match-info" id="matchInfo"></div>
       <div class="controls center-controls">
         <button id="start" class="primary">Start battle</button>
         <button id="stop" disabled>Stop</button>
