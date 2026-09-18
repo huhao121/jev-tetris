@@ -165,3 +165,19 @@ test("Haiku prompt lists every option and the reply parser only accepts real ids
   const { buildHaikuTool } = await import("../public/players.js");
   assert.deepEqual(buildHaikuTool(placements).input_schema.properties.option_id.enum, placements.map((p) => p.id));
 });
+
+test("garbage rows push the stack up and report overflow at the top", async () => {
+  const { addGarbage, GARBAGE } = await import("../public/tetris.js");
+  const board = emptyBoard();
+  board[HEIGHT - 1][0] = "X";
+  const { board: after, overflow } = addGarbage(board, 2, 4);
+  assert.equal(overflow, false);
+  assert.equal(after.length, HEIGHT);
+  assert.equal(after[HEIGHT - 3][0], "X"); // old bottom row moved up two
+  assert.deepEqual(after[HEIGHT - 1].map((c) => (c ? 1 : 0)), [1, 1, 1, 1, 0, 1, 1, 1, 1, 1]);
+  assert.equal(after[HEIGHT - 1][0], GARBAGE);
+  const tall = emptyBoard();
+  tall[1][3] = "X";
+  assert.equal(addGarbage(tall, 2, 0).overflow, true);
+  assert.equal(addGarbage(tall, 1, 0).overflow, false);
+});

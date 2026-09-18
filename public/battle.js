@@ -25,6 +25,8 @@ import {
   dropY,
   makeBag,
   seededRandom,
+  addGarbage,
+  GARBAGE,
   scoreForLines,
   describePlacement,
 } from "./tetris.js";
@@ -52,6 +54,7 @@ const ui = {
   seed: $("seed"),
   limit: $("limit"),
   lockstep: $("lockstep"),
+  garbage: $("garbage"),
   start: $("start"),
   stop: $("stop"),
   clock: $("clock"),
@@ -75,11 +78,15 @@ function makeSide(id, player) {
     ctx: canvas.getContext("2d"),
     cell: canvas.width / WIDTH,
     overlay: $(`overlay${id}`),
+    incomingEl: $(`incoming${id}`),
     statsEl: $(`stats${id}`),
     moveEl: $(`move${id}`),
     section: $(id === "L" ? "left" : "right"),
     board: emptyBoard(),
     random: null,
+    garbageRandom: null,
+    pendingGarbage: 0,
+    opponent: null,
     bag: [],
     current: null,
     next: null,
@@ -96,7 +103,7 @@ function makeSide(id, player) {
 }
 
 function freshStats() {
-  return { calls: 0, latency: 0, minLatency: Infinity, maxLatency: 0, missed: 0, invalid: 0, errors: 0, inputTokens: 0, outputTokens: 0, cost: 0, clears: [0, 0, 0, 0, 0] };
+  return { calls: 0, latency: 0, minLatency: Infinity, maxLatency: 0, missed: 0, invalid: 0, errors: 0, inputTokens: 0, outputTokens: 0, cost: 0, sent: 0, received: 0, clears: [0, 0, 0, 0, 0] };
 }
 
 function recordDecision(side, decision) {
@@ -140,6 +147,8 @@ function nextPiece(side) {
 function resetSide(side, seed) {
   side.board = emptyBoard();
   side.random = seededRandom(seed);
+  side.garbageRandom = seededRandom(seed * 7919 + (side.id === "L" ? 1 : 2));
+  side.pendingGarbage = 0;
   side.bag = [];
   side.current = nextPiece(side);
   side.next = nextPiece(side);
@@ -153,7 +162,8 @@ function resetSide(side, seed) {
   side.lostAt = null;
   side.stats = freshStats();
   side.overlay.classList.add("hidden");
-  side.section.classList.remove("winner", "loser");
+  side.section.classList.remove("winner", "loser", "hit");
+  side.incomingEl.textContent = "";
   side.moveEl.textContent = "Ready.";
   drawSide(side);
   renderSideStats(side);
@@ -195,7 +205,7 @@ function drawSide(side) {
   for (let y = 0; y < HEIGHT; y++) {
     for (let x = 0; x < WIDTH; x++) {
       const c = side.board[y][x];
-      if (c) paint(x, y, side.flash.includes(y) ? "#ffffff" : PIECE_COLORS[c]);
+      if (c) paint(x, y, side.flash.includes(y) ? "#ffffff" : c === GARBAGE ? "#5b6472" : PIECE_COLORS[c]);
     }
   }
   if (side.target) for (const [x, y] of side.target) paint(x, y, "#ffffff", 0.7, true);
@@ -230,23 +240,30 @@ function renderSideStats(side) {
     ? [
         ["Lines", side.lines],
         ["Pieces", side.pieces],
+        ["Sent", s.sent],
+        ["Received", s.received],
         ["Latency", avg],
         ["Missed", s.missed],
         ["In tok", s.inputTokens.toLocaleString()],
         ["Out tok", s.outputTokens.toLocaleString()],
         ["Cost", fmtUsd(s.cost)],
         ["Per move", s.calls ? fmtUsd(s.cost / s.calls, 5) : "–"],
+        ["Calls", s.calls],
+        ["Invalid", s.invalid + s.errors],
       ]
     : [
         ["Lines", side.lines],
         ["Pieces", side.pieces],
         ["Score", side.score],
+        ["Sent", s.sent],
+        ["Received", s.received],
         ["Avg latency", avg],
         ["Missed", s.missed],
         ["Invalid", s.invalid + s.errors],
         ["Tokens in", s.inputTokens.toLocaleString()],
         ["Tokens out", s.outputTokens.toLocaleString()],
         ["Cost", fmtUsd(s.cost)],
+        ["Per move", s.calls ? fmtUsd(s.cost / s.calls, 5) : "–"],
       ];
   side.statsEl.innerHTML = rows
     .map(([label, value]) => `<div class="stat"><span class="label">${label}</span><span>${value}</span></div>`)
@@ -264,6 +281,8 @@ function comparisonTable(L, R) {
       ${row("Lines", (s) => s.lines)}
       ${row("Pieces", (s) => s.pieces)}
       ${row("Lines / piece", (s) => (s.pieces ? (s.lines / s.pieces).toFixed(2) : "–"))}
+      ${row("Garbage sent", (s) => s.stats.sent)}
+      ${row("Garbage received", (s) => s.stats.received)}
       ${row("Avg latency", avg)}
       ${row("Min–max ms", range)}
       ${row("Missed", (s) => s.stats.missed)}
@@ -295,8 +314,41 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- One player's real-time loop ------------------------------------------------------
 
+function renderIncoming(side) {
+  side.incomingEl.textContent = side.pendingGarbage > 0 ? `▼ ${side.pendingGarbage} incoming` : "";
+}
+
+function sendGarbage(from, count) {
+  const to = from.opponent;
+  if (!to || to.over || count <= 0) return;
+  to.pendingGarbage += count;
+  from.stats.sent += count;
+  renderIncoming(to);
+}
+
+// Incoming garbage lands when the receiver's piece has locked, before the next spawn.
+function applyGarbage(side) {
+  const n = side.pendingGarbage;
+  if (n <= 0) return false;
+  side.pendingGarbage = 0;
+  const gap = Math.floor(side.garbageRandom() * WIDTH);
+  const { board, overflow } = addGarbage(side.board, n, gap);
+  side.board = board;
+  side.stats.received += n;
+  renderIncoming(side);
+  side.section.classList.add("hit");
+  setTimeout(() => side.section.classList.remove("hit"), 350);
+  drawSide(side);
+  renderSideStats(side);
+  return overflow;
+}
+
 async function runSide(side, { signal, lockstep }) {
   while (!side.over && !signal.aborted) {
+    if (applyGarbage(side)) {
+      topOut(side);
+      return;
+    }
     const piece = side.current;
     const spawn = PIECES[piece][0];
     if (collides(side.board, spawn.cells, SPAWN_X, 0)) {
@@ -422,6 +474,7 @@ async function runSide(side, { signal, lockstep }) {
     side.board = board;
     side.lines += cleared;
     side.stats.clears[cleared] += 1;
+    if (battle?.garbage && cleared > 0) sendGarbage(side, cleared);
     side.score += scoreForLines(cleared, Math.floor(side.lines / 10) + 1);
     side.pieces += 1;
     side.current = side.next;
@@ -459,6 +512,11 @@ function checkEnd(timeUp = false) {
     // clock in both modes. The survivor wins once it passes the loser's count.
     const loser = L.over ? L : R;
     const survivor = loser === L ? R : L;
+    if (battle.garbage) {
+      // Versus: the boards are coupled by garbage, so the first to top out loses.
+      finish(survivor, loser, `${survivor.player.name} wins: ${loser.player.name} topped out first`);
+      return;
+    }
     if (survivor.pieces > loser.pieces) {
       finish(survivor, loser, `${survivor.player.name} wins: survived past ${loser.pieces} pieces`);
     } else {
@@ -496,9 +554,9 @@ function finish(winner, loser, reason) {
     winner.section.classList.add("winner");
     loser?.section.classList.add("loser");
   }
-  const gravityNote = battle.lockstep
-    ? "lockstep, no gravity"
-    : `gravity ${battle.gravityMs} → ${gravityNow()} ms/row, level ${currentLevel()}`;
+  const gravityNote =
+    (battle.lockstep ? "lockstep, no gravity" : `gravity ${battle.gravityMs} → ${gravityNow()} ms/row, level ${currentLevel()}`) +
+    (battle.garbage ? ", versus" : "");
   ui.result.innerHTML = `${reason}<small>${formatClock(elapsed)} elapsed · seed ${ui.seed.value} · ${gravityNote}</small>${comparisonTable(L, R)}`;
   ui.result.classList.remove("hidden");
   ui.start.disabled = false;
@@ -527,15 +585,18 @@ async function startBattle() {
   const gravityMs = Number(ui.gravity.value);
   const speedup = SPEEDUPS[ui.speedup.value] || SPEEDUPS.normal;
   const lockstep = ui.lockstep.checked;
+  const garbage = ui.garbage.checked;
   const limitMs = Math.max(1, Number(ui.limit.value) || 5) * 60_000;
   sides = [makeSide("L", createJevPlayer(jevKey)), makeSide("R", createHaikuPlayer(haikuKey))];
+  sides[0].opponent = sides[1];
+  sides[1].opponent = sides[0];
   for (const s of sides) resetSide(s, seed);
   ui.result.classList.add("hidden");
   ui.start.disabled = true;
   ui.stop.disabled = false;
-  ui.matchInfo.textContent = lockstep
-    ? `seed ${seed} · lockstep, no gravity`
-    : `seed ${seed} · ${gravityMs} ms per row, ${describeSpeedup(ui.speedup.value)}`;
+  ui.matchInfo.textContent =
+    (lockstep ? `seed ${seed} · lockstep, no gravity` : `seed ${seed} · ${gravityMs} ms per row, ${describeSpeedup(ui.speedup.value)}`) +
+    (garbage ? " · cleared lines attack" : "");
   if (PRESENT) {
     document.body.classList.add("running");
     for (const n of [3, 2, 1]) {
@@ -544,7 +605,7 @@ async function startBattle() {
     }
   }
   const abort = new AbortController();
-  battle = { startedAt: performance.now(), abort, timer: null, limitMs, gravityMs, speedup, lockstep };
+  battle = { startedAt: performance.now(), abort, timer: null, limitMs, gravityMs, speedup, lockstep, garbage };
   renderLevel();
   battle.timer = setInterval(() => {
     if (!battle) return;

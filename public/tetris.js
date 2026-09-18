@@ -296,6 +296,26 @@ export function boardToText(board) {
   return board.map((row) => row.map((c) => (c ? "#" : ".")).join(""));
 }
 
+// ---- Garbage (versus mode) --------------------------------------------------------
+// Pushes `count` garbage rows in from the bottom, each full except one gap.
+// Returns { board, overflow }: overflow is true when the shift pushed filled
+// cells out of the top, which ends the receiving player's game.
+export const GARBAGE = "G";
+
+export function addGarbage(board, count, gapColumn) {
+  if (count <= 0) return { board, overflow: false };
+  const n = Math.min(count, HEIGHT);
+  let overflow = false;
+  for (let y = 0; y < n; y++) if (board[y].some((c) => c)) overflow = true;
+  const rows = board.slice(n).map((r) => r.slice());
+  for (let i = 0; i < n; i++) {
+    const row = new Array(WIDTH).fill(GARBAGE);
+    row[gapColumn] = null;
+    rows.push(row);
+  }
+  return { board: rows, overflow };
+}
+
 // ---- Random bag ------------------------------------------------------------
 
 // Small seeded PRNG (mulberry32) so two players can share one piece sequence.

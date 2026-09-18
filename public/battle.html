@@ -16,7 +16,8 @@
       <p class="sub">
         Same piece sequence, same options, same clock. Pieces keep falling while each model thinks,
         and gravity gets stronger as the minutes pass; a piece that lands before its answer arrives
-        locks where it is. Top out, and the other side wins by surviving past your piece count.
+        locks where it is. Every line you clear lands on your opponent's board as a garbage row.
+        Whoever tops out first loses.
         <a href="./">Single-player demo</a>
       </p>
     </div>
@@ -32,6 +33,7 @@
         <canvas class="board" id="boardL" width="240" height="480" aria-label="Jev's board"></canvas>
         <div class="overlay hidden" id="overlayL"></div>
       </div>
+      <div class="incoming" id="incomingL"></div>
       <div class="pstats" id="statsL"></div>
       <div class="pmove muted" id="moveL">Waiting to start.</div>
     </section>
@@ -58,6 +60,7 @@
         </label>
         <label class="field">Seed <input id="seed" type="number" value="42" /></label>
         <label class="field">Time limit (min) <input id="limit" type="number" min="1" max="30" value="5" /></label>
+        <label class="field check"><input id="garbage" type="checkbox" checked /> Versus: cleared lines attack the opponent</label>
         <label class="field check"><input id="lockstep" type="checkbox" /> Wait for answers (no gravity)</label>
       </div>
       <div class="vs">VS</div>
@@ -81,6 +84,7 @@
         <canvas class="board" id="boardR" width="240" height="480" aria-label="Claude Haiku's board"></canvas>
         <div class="overlay hidden" id="overlayR"></div>
       </div>
+      <div class="incoming" id="incomingR"></div>
       <div class="pstats" id="statsR"></div>
       <div class="pmove muted" id="moveR">Waiting to start.</div>
     </section>

@@ -23,6 +23,8 @@ canvas.board {
 .player.winner canvas.board { border-color: var(--good); box-shadow: 0 0 0 3px rgba(95, 227, 138, 0.35), 0 10px 40px rgba(0, 0, 0, 0.45); }
 .player.loser canvas.board { border-color: var(--bad); }
 
+.incoming { min-height: 18px; font-size: 12px; color: var(--bad); font-weight: 600; text-align: center; }
+.player.hit canvas.board { border-color: var(--bad); box-shadow: 0 0 0 3px rgba(242, 107, 107, 0.45), 0 10px 40px rgba(0, 0, 0, 0.45); }
 .pstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 14px; width: 300px; }
 .pstats .stat span:not(.label) { font-size: 16px; }
 .pmove { width: 300px; font-size: 13px; min-height: 36px; text-align: center; }
@@ -66,7 +68,7 @@ canvas.board {
 /* ---- Presentation mode (?present): boards, clock, result. Nothing else. ---- */
 body.present { background: #0b0e15; min-height: 0; overflow: hidden; }
 body.present .top, body.present .foot, body.present #setup-card, body.present #rules-card, body.present .pmove { display: none; }
-body.present .arena { grid-template-columns: 300px 260px 300px; justify-content: center; gap: 28px; padding: 18px 24px 16px; }
+body.present .arena { grid-template-columns: 300px 260px 300px; justify-content: center; gap: 28px; padding: 14px 24px 12px; }
 body.present .center { gap: 10px; padding-top: 44px; }
 body.present .present-title { display: block; text-align: center; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .present-title { display: none; }
@@ -81,9 +83,11 @@ body.present .result { font-size: 14px; padding: 8px 10px; }
 body.present .result small { font-size: 11px; }
 body.present .compare { font-size: 11px; }
 body.present .compare th, body.present .compare td { padding: 1px 3px; }
-body.present .pstats { grid-template-columns: repeat(4, 1fr); gap: 6px 8px; }
+body.present .pstats { grid-template-columns: repeat(4, 1fr); gap: 3px 8px; }
+body.present .pstats .stat { gap: 0; }
 body.present .pstats .stat .label { font-size: 10px; }
-body.present .pstats .stat span:not(.label) { font-size: 15px; }
+body.present .pstats .stat span:not(.label) { font-size: 14px; }
 body.present .badge { font-size: 17px; }
-body.present .player { gap: 8px; }
+body.present .player { gap: 6px; }
+body.present .incoming { min-height: 16px; font-size: 12px; }
 body.present .error { font-size: 12px; }

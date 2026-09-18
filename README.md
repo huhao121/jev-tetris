@@ -68,9 +68,16 @@ holes more than the heuristic does, so the stack gets rough over time. The `prio
 options and one shared clock. Pieces keep falling while each model thinks; a piece that lands before
 its answer arrives locks where it is. Gravity gets stronger over time on a schedule both sides share
 (default: 15% faster every 20 seconds, starting at 150 ms per row, floor 40 ms), so the decision
-deadline tightens as the battle goes on and the level is shown under the clock. First to top out
-loses. The "wait for answers" toggle removes gravity so only decision quality is compared, and there
-the winner is whoever survives more pieces.
+deadline tightens as the battle goes on and the level is shown under the clock.
+
+**Versus (default):** every line a player clears becomes a garbage row (full except one gap) queued
+for the opponent and inserted at the bottom of their board when their current piece locks. If that
+push shoves the stack out of the top, they are out. Whoever tops out first loses.
+
+With the versus box unticked the boards are independent and, since a faster player cycles through
+more pieces per minute, the survivor must outlast the loser's piece count to win. The "wait for
+answers" toggle removes gravity so only decision quality is compared. Append `?present` to the URL
+for a stripped-down layout meant for recordings.
 
 ![Battle](docs/battle.png)
 
@@ -83,6 +90,7 @@ Observed results on seed 42 (one run each; Jev is not fully deterministic betwee
 
 | Mode | Result | Jev | Claude Haiku 4.5 |
 | --- | --- | --- | --- |
+| Versus, 150 ms/row rising 15% every 20 s | Jev wins at 0:18: Haiku topped out first | 8 lines, 36 pieces, sent 8 garbage, 222 ms/move, 0 missed, $0.005 | 2 lines, 20 pieces, sent 2 garbage, 770 ms/move, 3 missed, $0.047 |
 | Real time, 150 ms/row rising 15% every 20 s | Jev wins: out at 97 pieces, Haiku out at 61 | 25 lines, 97 pieces, 243 ms/move, 2 missed, $0.013 | 15 lines, 61 pieces, 721 ms/move, 6 missed, $0.155 |
 | Real time, constant 120 ms/row | Jev wins: Haiku out at 41 pieces, Jev alive at 79 | 26 lines, 79 pieces, 236 ms/move, 0 missed, $0.010 | 7 lines, 41 pieces, 792 ms/move, 7 missed, $0.094 |
 | Lockstep (no gravity) | Jev wins, survived more pieces | 52 lines, 167 pieces, 219 ms/move, $0.022 | 28 lines, 106 pieces, 832 ms/move, $0.301 |
