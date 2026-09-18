@@ -49,8 +49,14 @@ For every piece:
    distribution is drawn on the board as ghost outlines, so you can see what Jev was torn between.
    A classic hand-tuned heuristic is computed alongside, and the panel shows how often Jev agrees with it.
 
-The model is `jev-latest`. Each move is one request of roughly 1,000 to 2,000 input tokens, which at
-the published price is a few hundredths of a cent.
+The model is `jev-latest`. Each move is one request of roughly 2,500 to 4,000 input tokens (the
+board plus 9 to 34 described options). A 150-piece game measured about 240 ms per move and
+roughly 530k input tokens, which is about two cents at the published price.
+
+Observed play (one 150-piece run): 50 lines, no game over, 69% agreement with the classic
+heuristic, average placement confidence 0.69. Jev takes single-line clears readily and tolerates
+holes more than the heuristic does, so the stack gets rough over time. The `priorities` list in
+`public/jev.js` is where to push it toward cleaner play.
 
 ## Run it
 
