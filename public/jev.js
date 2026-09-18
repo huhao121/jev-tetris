@@ -105,7 +105,7 @@ export async function askJev(request, apiKey, { signal, maxAttempts = 4 } = {}) 
     const started = performance.now();
     const headers = { "Content-Type": "application/json" };
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-    const res = await fetch("/api/systemone", {
+    const res = await fetch("api/systemone", {
       method: "POST",
       headers,
       body: JSON.stringify(request),

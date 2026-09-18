@@ -6,6 +6,19 @@ confidence, latency, token usage and the raw request/response.
 
 ![Jev plays Tetris](docs/screenshot.png)
 
+## Play it
+
+Jev mode needs a small server because `api.typesafe.ai` rejects browser origins, so the page cannot
+be hosted as a static file. Two ways to get a URL:
+
+- **Deploy to Vercel in one click.** The repo ships `api/` functions that act as the proxy and a
+  `vercel.json`. Your key is entered in the page, never stored on the server.
+
+  [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftrungdq88%2Fjev-tetris%2Ftree%2Fclaude%2Fjev-tetris-demo-dtm2mn&project-name=jev-tetris&repository-name=jev-tetris)
+
+  Any host that runs `npm start` on a Node 20+ box (Railway, Render, Fly, a VPS) works too.
+- **Run locally.** See [Run it](#run-it) below.
+
 ## How it works
 
 Jev is not a text generator or a planner. It answers typed questions about a piece of state and
@@ -83,7 +96,10 @@ builder (one criteria entry per placement, stable field names, answer mapping).
 ## Files
 
 ```
-server.mjs            static server + TypeSafe proxy
+server.mjs            local static server + TypeSafe proxy
+lib/typesafe.mjs      proxy logic shared by server.mjs and api/
+api/*.js              the same proxy as Vercel serverless functions
+vercel.json           Vercel config (static public/, functions in api/)
 public/index.html     page
 public/style.css      styles
 public/app.js         game loop, animation, panels

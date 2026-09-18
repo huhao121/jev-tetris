@@ -82,6 +82,12 @@ const stats = { calls: 0, latency: 0, tokens: 0, agreements: 0, decisions: 0 };
 
 let abort = null;
 let serverKeyConfigured = false;
+// False when the page is served without its proxy (static hosting, file://).
+// Jev mode needs the proxy because api.typesafe.ai rejects browser origins.
+let backendAvailable = true;
+const NO_BACKEND_MESSAGE =
+  "This copy of the page has no proxy server, so it cannot reach api.typesafe.ai (the API blocks browser origins). " +
+  "Run `npm start` locally or deploy the repo to get Jev mode. The built-in heuristic works here.";
 
 function mode() {
   return document.querySelector('input[name="mode"]:checked').value;
@@ -454,6 +460,10 @@ function handleJevError(err) {
 // ---- Controls -----------------------------------------------------------------------
 function start() {
   if (game.over) return;
+  if (mode() === "jev" && !backendAvailable) {
+    showError(NO_BACKEND_MESSAGE);
+    return;
+  }
   if (mode() === "jev" && !currentKey() && !serverKeyConfigured) {
     showError("Enter your TypeSafe API key first, or switch to the built-in heuristic.");
     ui.apiKey.focus();
@@ -509,6 +519,11 @@ function persistKey() {
 }
 
 async function testKey() {
+  if (!backendAvailable) {
+    setKeyStatus("No proxy server here; see the message under Start.", false);
+    showError(NO_BACKEND_MESSAGE);
+    return;
+  }
   if (!currentKey() && !serverKeyConfigured) {
     setKeyStatus("Enter a key first.", false);
     return;
@@ -516,7 +531,7 @@ async function testKey() {
   ui.testKey.disabled = true;
   setKeyStatus("Checking…", true);
   try {
-    const res = await fetch("/api/models", { headers: { Authorization: `Bearer ${currentKey()}` } });
+    const res = await fetch("api/models", { headers: { Authorization: `Bearer ${currentKey()}` } });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body?.detail?.message || `HTTP ${res.status}`);
     const names = (body.models || []).map((m) => m.name).join(", ");
@@ -564,13 +579,20 @@ try {
 } catch {
   /* storage unavailable */
 }
-fetch("/api/config")
-  .then((r) => r.json())
+function markNoBackend() {
+  backendAvailable = false;
+  document.querySelector('input[name="mode"][value="heuristic"]').checked = true;
+  setStatus("Preview without a proxy server: the heuristic plays. Press Start.");
+  ui.apiKey.placeholder = "Jev mode needs the proxy server (npm start)";
+}
+
+fetch("api/config", { cache: "no-store" })
+  .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
   .then((cfg) => {
     serverKeyConfigured = Boolean(cfg.serverKeyConfigured);
     if (serverKeyConfigured) ui.apiKey.placeholder = "host key configured; leave blank to use it";
   })
-  .catch(() => {});
+  .catch(markNoBackend);
 
 resetGame();
 setStatus("Enter your TypeSafe API key and press Start.");
