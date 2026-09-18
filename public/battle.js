@@ -5,7 +5,11 @@
 // `gravityMs`. When the answer arrives, the piece slides to the chosen column
 // and rotation (if it still fits at its current height) and hard-drops. If
 // the piece lands before the answer arrives, it locks where it is: a missed
-// deadline. First to top out loses; at the time limit, more lines wins.
+// deadline. Gravity strengthens on a shared schedule as the battle goes on,
+// so the deadline tightens for both sides equally. When one side tops out,
+// the other must survive past the same piece count to win (a faster player
+// cycles pieces faster, so wall-clock survival would reward slowness); at
+// the time limit, more lines wins.
 
 import {
   WIDTH,
@@ -27,6 +31,13 @@ import {
 import { createJevPlayer, createHaikuPlayer } from "./players.js";
 
 const $ = (id) => document.getElementById(id);
+const SPEEDUPS = {
+  none: { everyMs: Infinity, factor: 1 },
+  gentle: { everyMs: 30_000, factor: 0.9 },
+  normal: { everyMs: 20_000, factor: 0.85 },
+  brutal: { everyMs: 10_000, factor: 0.8 },
+};
+const MIN_GRAVITY_MS = 40;
 const STORAGE = { jev: "jev_tetris_api_key", haiku: "jev_tetris_anthropic_key" };
 const SPAWN_X = 3;
 
@@ -36,6 +47,8 @@ const ui = {
   remember: $("remember"),
   gravity: $("gravity"),
   gravityLabel: $("gravityLabel"),
+  speedup: $("speedup"),
+  level: $("level"),
   seed: $("seed"),
   limit: $("limit"),
   lockstep: $("lockstep"),
@@ -78,7 +91,26 @@ function makeSide(id, player) {
 }
 
 let sides = [];
-let battle = null; // { startedAt, abort, timer, limitMs, gravityMs, lockstep }
+let battle = null; // { startedAt, abort, timer, limitMs, gravityMs, speedup, lockstep }
+
+// Level 1 at the start; one level up every `everyMs` of the shared clock.
+function currentLevel() {
+  if (!battle) return 1;
+  const elapsed = performance.now() - battle.startedAt;
+  return Number.isFinite(battle.speedup.everyMs) ? Math.floor(elapsed / battle.speedup.everyMs) + 1 : 1;
+}
+
+function gravityNow() {
+  if (!battle) return Number(ui.gravity.value);
+  const ms = battle.gravityMs * Math.pow(battle.speedup.factor, currentLevel() - 1);
+  return Math.max(MIN_GRAVITY_MS, Math.round(ms));
+}
+
+function renderLevel() {
+  const level = currentLevel();
+  ui.level.textContent = `Level ${level} · ${gravityNow()} ms per row`;
+  ui.level.classList.toggle("hot", level >= 4);
+}
 
 function nextPiece(side) {
   if (side.bag.length === 0) side.bag = makeBag(side.random);
@@ -200,7 +232,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- One player's real-time loop ------------------------------------------------------
 
-async function runSide(side, { signal, gravityMs, lockstep }) {
+async function runSide(side, { signal, lockstep }) {
   while (!side.over && !signal.aborted) {
     const piece = side.current;
     const spawn = PIECES[piece][0];
@@ -243,13 +275,13 @@ async function runSide(side, { signal, gravityMs, lockstep }) {
       await pending;
       outcome = decision ? "decided" : "missed";
     } else {
-      // Gravity loop: one row per gravityMs until the answer arrives or the piece lands.
+      // Gravity loop: one row per gravityNow() until the answer arrives or the piece lands.
       while (!signal.aborted) {
         if (settled) {
           outcome = decision ? "decided" : "missed";
           break;
         }
-        await sleep(gravityMs);
+        await sleep(gravityNow());
         if (signal.aborted) return;
         if (settled) {
           outcome = decision ? "decided" : "missed";
@@ -341,7 +373,7 @@ async function runSide(side, { signal, gravityMs, lockstep }) {
     side.next = nextPiece(side);
     drawSide(side);
     renderSideStats(side);
-    if (battle?.lockstep) checkEnd();
+    if (battle) checkEnd();
   }
 }
 
@@ -367,19 +399,15 @@ function checkEnd(timeUp = false) {
   const oneOver = L.over || R.over;
   if (!oneOver && !timeUp) return;
   if (oneOver && !bothOver && !timeUp) {
+    // One side is out. A fast player cycles through more pieces per minute, so
+    // wall-clock survival would reward slowness; pieces survived is the fair
+    // clock in both modes. The survivor wins once it passes the loser's count.
     const loser = L.over ? L : R;
     const survivor = loser === L ? R : L;
-    if (!battle.lockstep) {
-      // Real time: both sides share one clock, so the survivor wins on the spot.
-      finish(survivor, loser, `${survivor.player.name} wins by survival`);
-      return;
-    }
-    // Lockstep: each side plays at its own pace, so pieces placed are the clock.
-    // The survivor wins once it has outlasted the loser's piece count.
     if (survivor.pieces > loser.pieces) {
       finish(survivor, loser, `${survivor.player.name} wins: survived past ${loser.pieces} pieces`);
     } else {
-      loser.overlay.textContent = `Topped out at ${formatClock(loser.lostAt)} · ${survivor.player.name} must pass ${loser.pieces} pieces`;
+      loser.overlay.textContent = `Topped out at ${formatClock(loser.lostAt)} after ${loser.pieces} pieces · ${survivor.player.name} must pass ${loser.pieces}`;
     }
     return;
   }
@@ -415,7 +443,10 @@ function finish(winner, loser, reason) {
   }
   const line = (s) =>
     `${s.player.name}: ${s.lines} lines, ${s.pieces} pieces, avg ${s.stats.calls ? Math.round(s.stats.latency / s.stats.calls) : 0} ms, ${s.stats.missed} missed, $${s.stats.cost.toFixed(4)}`;
-  ui.result.innerHTML = `${reason}<small>${formatClock(elapsed)} elapsed · seed ${ui.seed.value} · gravity ${battle.gravityMs} ms/row${battle.lockstep ? " (lockstep)" : ""}</small><small>${line(L)}</small><small>${line(R)}</small>`;
+  const gravityNote = battle.lockstep
+    ? "lockstep, no gravity"
+    : `gravity ${battle.gravityMs} → ${gravityNow()} ms/row, reached level ${currentLevel()}`;
+  ui.result.innerHTML = `${reason}<small>${formatClock(elapsed)} elapsed · seed ${ui.seed.value} · ${gravityNote}</small><small>${line(L)}</small><small>${line(R)}</small>`;
   ui.result.classList.remove("hidden");
   ui.start.disabled = false;
   ui.stop.disabled = true;
@@ -433,6 +464,7 @@ function startBattle() {
   persistKeys();
   const seed = Number(ui.seed.value) || 42;
   const gravityMs = Number(ui.gravity.value);
+  const speedup = SPEEDUPS[ui.speedup.value] || SPEEDUPS.normal;
   const lockstep = ui.lockstep.checked;
   const limitMs = Math.max(1, Number(ui.limit.value) || 5) * 60_000;
   sides = [makeSide("L", createJevPlayer(jevKey)), makeSide("R", createHaikuPlayer(haikuKey))];
@@ -441,14 +473,16 @@ function startBattle() {
   ui.start.disabled = true;
   ui.stop.disabled = false;
   const abort = new AbortController();
-  battle = { startedAt: performance.now(), abort, timer: null, limitMs, gravityMs, lockstep };
+  battle = { startedAt: performance.now(), abort, timer: null, limitMs, gravityMs, speedup, lockstep };
+  renderLevel();
   battle.timer = setInterval(() => {
     if (!battle) return;
     const elapsed = performance.now() - battle.startedAt;
     ui.clock.textContent = formatClock(elapsed);
+    renderLevel();
     if (elapsed >= battle.limitMs) checkEnd(true);
   }, 250);
-  for (const s of sides) runSide(s, { signal: abort.signal, gravityMs, lockstep });
+  for (const s of sides) runSide(s, { signal: abort.signal, lockstep });
 }
 
 function stopBattle() {
@@ -477,8 +511,10 @@ ui.stop.addEventListener("click", stopBattle);
 ui.remember.addEventListener("change", persistKeys);
 ui.gravity.addEventListener("input", () => {
   ui.gravityLabel.textContent = `${ui.gravity.value} ms per row`;
+  if (!battle) renderLevel();
 });
 ui.gravityLabel.textContent = `${ui.gravity.value} ms per row`;
+renderLevel();
 
 try {
   const j = localStorage.getItem(STORAGE.jev);

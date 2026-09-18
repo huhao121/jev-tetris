@@ -14,8 +14,9 @@
     <div>
       <h1>Jev vs Claude Haiku</h1>
       <p class="sub">
-        Same piece sequence, same options, same clock. Pieces keep falling while each model thinks;
-        a piece that lands before its answer arrives locks where it is. First to top out loses.
+        Same piece sequence, same options, same clock. Pieces keep falling while each model thinks,
+        and gravity gets stronger as the minutes pass; a piece that lands before its answer arrives
+        locks where it is. Top out, and the other side wins by surviving past your piece count.
         <a href="./">Single-player demo</a>
       </p>
     </div>
@@ -45,13 +46,22 @@
       </div>
       <div class="card">
         <h2>Rules</h2>
-        <label class="field">Gravity <span class="muted" id="gravityLabel"></span><input id="gravity" type="range" min="60" max="400" step="10" value="120" /></label>
+        <label class="field">Starting gravity <span class="muted" id="gravityLabel"></span><input id="gravity" type="range" min="60" max="400" step="10" value="150" /></label>
+        <label class="field">Speed-up
+          <select id="speedup">
+            <option value="none">None: constant gravity</option>
+            <option value="gentle">Gentle: 10% faster every 30 s</option>
+            <option value="normal" selected>Normal: 15% faster every 20 s</option>
+            <option value="brutal">Brutal: 20% faster every 10 s</option>
+          </select>
+        </label>
         <label class="field">Seed <input id="seed" type="number" value="42" /></label>
         <label class="field">Time limit (min) <input id="limit" type="number" min="1" max="30" value="5" /></label>
         <label class="field check"><input id="lockstep" type="checkbox" /> Wait for answers (no gravity)</label>
       </div>
       <div class="vs">VS</div>
       <div class="clock" id="clock">0:00</div>
+      <div class="level muted" id="level">Level 1 · 150 ms per row</div>
       <div class="controls center-controls">
         <button id="start" class="primary">Start battle</button>
         <button id="stop" disabled>Stop</button>

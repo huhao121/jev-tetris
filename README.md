@@ -61,10 +61,12 @@ holes more than the heuristic does, so the stack gets rough over time. The `prio
 ## Battle mode: Jev vs Claude Haiku
 
 `battle.html` puts Jev and Claude Haiku 4.5 on the same seeded piece sequence with the same described
-options and one shared clock. Pieces keep falling while each model thinks (gravity is configurable);
-a piece that lands before its answer arrives locks where it is. First to top out loses. The
-"wait for answers" toggle removes gravity so only decision quality is compared, and there the
-winner is whoever survives more pieces.
+options and one shared clock. Pieces keep falling while each model thinks; a piece that lands before
+its answer arrives locks where it is. Gravity gets stronger over time on a schedule both sides share
+(default: 15% faster every 20 seconds, starting at 150 ms per row, floor 40 ms), so the decision
+deadline tightens as the battle goes on and the level is shown under the clock. First to top out
+loses. The "wait for answers" toggle removes gravity so only decision quality is compared, and there
+the winner is whoever survives more pieces.
 
 ![Battle](docs/battle.png)
 
@@ -77,8 +79,12 @@ Observed results on seed 42 (one run each; Jev is not fully deterministic betwee
 
 | Mode | Result | Jev | Claude Haiku 4.5 |
 | --- | --- | --- | --- |
-| Real time, 120 ms/row | Jev wins by survival at 0:39 | 26 lines, 79 pieces, 236 ms/move, 0 missed, $0.010 | 7 lines, 41 pieces, 792 ms/move, 7 missed, $0.094 |
+| Real time, 150 ms/row rising 15% every 20 s | Jev wins: out at 97 pieces, Haiku out at 61 | 25 lines, 97 pieces, 243 ms/move, 2 missed, $0.013 | 15 lines, 61 pieces, 721 ms/move, 6 missed, $0.155 |
+| Real time, constant 120 ms/row | Jev wins: Haiku out at 41 pieces, Jev alive at 79 | 26 lines, 79 pieces, 236 ms/move, 0 missed, $0.010 | 7 lines, 41 pieces, 792 ms/move, 7 missed, $0.094 |
 | Lockstep (no gravity) | Jev wins, survived more pieces | 52 lines, 167 pieces, 219 ms/move, $0.022 | 28 lines, 106 pieces, 832 ms/move, $0.301 |
+
+Missed deadlines bite both sides as the stack rises: near the top a piece has only a few rows
+to fall, and even Jev's ~240 ms answer can arrive after it lands.
 
 ## Run it
 

@@ -40,6 +40,12 @@ canvas.board {
 .center .remember { margin-top: 0; }
 .vs { text-align: center; font-size: 34px; font-weight: 800; letter-spacing: 0.1em; color: var(--muted); }
 .clock { text-align: center; font-size: 28px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.level { text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; margin-top: -8px; }
+.level.hot { color: var(--warn); }
+.field select {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+  padding: 7px 10px; font: inherit; font-size: 13px; width: 100%;
+}
 .center-controls { width: auto; justify-content: center; }
 .result {
   background: var(--panel); border: 1px solid var(--good); border-radius: var(--radius);
