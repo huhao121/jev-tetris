@@ -1,0 +1,53 @@
+.arena {
+  display: grid;
+  grid-template-columns: 1fr 320px 1fr;
+  gap: 20px;
+  padding: 8px 28px 24px;
+  align-items: start;
+}
+.player { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.player-head { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.badge { font-weight: 700; font-size: 18px; padding: 4px 14px; border-radius: 999px; }
+.badge.jev { background: rgba(63, 214, 240, 0.15); color: var(--accent-2); border: 1px solid rgba(63, 214, 240, 0.4); }
+.badge.haiku { background: rgba(244, 163, 64, 0.15); color: #f4a340; border: 1px solid rgba(244, 163, 64, 0.4); }
+.model { font-size: 12px; }
+canvas.board {
+  width: 240px;
+  height: 480px;
+  background: #0a0d14;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+}
+.player .overlay { font-size: 20px; }
+.player.winner canvas.board { border-color: var(--good); box-shadow: 0 0 0 3px rgba(95, 227, 138, 0.35), 0 10px 40px rgba(0, 0, 0, 0.45); }
+.player.loser canvas.board { border-color: var(--bad); }
+
+.pstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 14px; width: 300px; }
+.pstats .stat span:not(.label) { font-size: 16px; }
+.pmove { width: 300px; font-size: 13px; min-height: 36px; text-align: center; }
+
+.center { display: flex; flex-direction: column; gap: 12px; }
+.center .card h2 { margin-bottom: 8px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.field input[type="password"], .field input[type="number"] {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+  padding: 7px 10px; font-family: var(--mono); font-size: 13px; width: 100%;
+}
+.field input:focus { outline: none; border-color: var(--accent); }
+.field.check { flex-direction: row; align-items: center; gap: 8px; }
+.field input[type="range"] { width: 100%; }
+.center .remember { margin-top: 0; }
+.vs { text-align: center; font-size: 34px; font-weight: 800; letter-spacing: 0.1em; color: var(--muted); }
+.clock { text-align: center; font-size: 28px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.center-controls { width: auto; justify-content: center; }
+.result {
+  background: var(--panel); border: 1px solid var(--good); border-radius: var(--radius);
+  padding: 12px 14px; text-align: center; font-weight: 600; line-height: 1.5;
+}
+.result small { display: block; color: var(--muted); font-weight: 400; font-size: 13px; }
+
+@media (max-width: 1000px) {
+  .arena { grid-template-columns: 1fr; }
+  .center { order: -1; }
+}

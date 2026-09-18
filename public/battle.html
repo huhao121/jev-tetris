@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jev vs Claude Haiku</title>
+  <meta name="description" content="Two models play the same Tetris piece sequence in real time. First to top out loses." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='6' height='14' fill='%233fd6f0'/><rect x='9' y='1' width='6' height='14' fill='%23f4a340'/></svg>" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="battle.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Jev vs Claude Haiku</h1>
+      <p class="sub">
+        Same piece sequence, same options, same clock. Pieces keep falling while each model thinks;
+        a piece that lands before its answer arrives locks where it is. First to top out loses.
+        <a href="./">Single-player demo</a>
+      </p>
+    </div>
+  </header>
+
+  <main class="arena">
+    <section class="player" id="left">
+      <div class="player-head">
+        <span class="badge jev">Jev</span>
+        <span class="model muted">jev-latest · TypeSafe</span>
+      </div>
+      <div class="board-wrap">
+        <canvas class="board" id="boardL" width="240" height="480" aria-label="Jev's board"></canvas>
+        <div class="overlay hidden" id="overlayL"></div>
+      </div>
+      <div class="pstats" id="statsL"></div>
+      <div class="pmove muted" id="moveL">Waiting to start.</div>
+    </section>
+
+    <section class="center">
+      <div class="card">
+        <h2>Keys</h2>
+        <label class="field">TypeSafe key <input id="jevKey" type="password" placeholder="apikey_…" autocomplete="off" spellcheck="false" /></label>
+        <label class="field">Anthropic key <input id="haikuKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" /></label>
+        <label class="remember"><input id="remember" type="checkbox" /> Remember both in this browser</label>
+        <p class="hint">Both keys go from this page to the proxy in <code>server.mjs</code>, which forwards each to its API and stores nothing.</p>
+      </div>
+      <div class="card">
+        <h2>Rules</h2>
+        <label class="field">Gravity <span class="muted" id="gravityLabel"></span><input id="gravity" type="range" min="60" max="400" step="10" value="120" /></label>
+        <label class="field">Seed <input id="seed" type="number" value="42" /></label>
+        <label class="field">Time limit (min) <input id="limit" type="number" min="1" max="30" value="5" /></label>
+        <label class="field check"><input id="lockstep" type="checkbox" /> Wait for answers (no gravity)</label>
+      </div>
+      <div class="vs">VS</div>
+      <div class="clock" id="clock">0:00</div>
+      <div class="controls center-controls">
+        <button id="start" class="primary">Start battle</button>
+        <button id="stop" disabled>Stop</button>
+      </div>
+      <div id="result" class="result hidden"></div>
+      <div id="error" class="error hidden" role="alert"></div>
+    </section>
+
+    <section class="player" id="right">
+      <div class="player-head">
+        <span class="badge haiku">Claude Haiku 4.5</span>
+        <span class="model muted">claude-haiku-4-5 · Anthropic</span>
+      </div>
+      <div class="board-wrap">
+        <canvas class="board" id="boardR" width="240" height="480" aria-label="Claude Haiku's board"></canvas>
+        <div class="overlay hidden" id="overlayR"></div>
+      </div>
+      <div class="pstats" id="statsR"></div>
+      <div class="pmove muted" id="moveR">Waiting to start.</div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    Each side sees the same board text and the same described placement list. Jev answers with a Choice
+    distribution; Haiku answers with an option id in plain text. Latency is part of the game.
+  </footer>
+
+  <script type="module" src="battle.js"></script>
+</body>
+</html>

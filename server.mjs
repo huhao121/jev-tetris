@@ -21,6 +21,7 @@ import {
   validateJson,
   writeResult,
 } from "./lib/typesafe.mjs";
+import { forwardToAnthropic } from "./lib/anthropic.mjs";
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "public");
@@ -78,6 +79,16 @@ const server = createServer(async (req, res) => {
         body,
       });
       writeResult(res, result);
+      return;
+    }
+    if (url.pathname === "/api/anthropic" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      const invalid = validateJson(body);
+      if (invalid) {
+        writeResult(res, invalid);
+        return;
+      }
+      writeResult(res, await forwardToAnthropic({ key: req.headers["x-api-key"] || "", body }));
       return;
     }
     if (url.pathname === "/api/models" && req.method === "GET") {

@@ -138,3 +138,30 @@ test("pickPlacement maps the answer back and ranks alternatives", () => {
   assert.equal(confidence, 0.4);
   assert.equal(Object.keys(buildQuestions(placements)).length, 4);
 });
+
+test("seeded bags give two players the same piece sequence", async () => {
+  const { seededRandom } = await import("../public/tetris.js");
+  const a = seededRandom(42);
+  const b = seededRandom(42);
+  const seqA = [...makeBag(a), ...makeBag(a), ...makeBag(a)];
+  const seqB = [...makeBag(b), ...makeBag(b), ...makeBag(b)];
+  assert.deepEqual(seqA, seqB);
+  const c = seededRandom(43);
+  assert.notDeepEqual([...makeBag(c)], seqA.slice(0, 7));
+});
+
+test("Haiku prompt lists every option and the reply parser only accepts real ids", async () => {
+  const { buildHaikuPrompt, parseHaikuChoice } = await import("../public/players.js");
+  const board = emptyBoard();
+  const placements = enumeratePlacements(board, "S");
+  const prompt = JSON.parse(buildHaikuPrompt({ board, piece: "S", nextPiece: "O", stats: placements[0].before, linesCleared: 0 }, placements));
+  assert.equal(Object.keys(prompt.options).length, placements.length);
+  assert.equal(prompt.current_piece, "S");
+  const msg = (content) => ({ content });
+  assert.equal(parseHaikuChoice(msg([{ type: "tool_use", name: "place_piece", input: { option_id: "p3" } }]), placements).id, "p3");
+  assert.equal(parseHaikuChoice(msg([{ type: "text", text: "I choose p2 because" }]), placements).id, "p2");
+  assert.equal(parseHaikuChoice(msg([{ type: "tool_use", name: "place_piece", input: { option_id: "p999" } }]), placements), null);
+  assert.equal(parseHaikuChoice(msg([{ type: "text", text: "no idea" }]), placements), null);
+  const { buildHaikuTool } = await import("../public/players.js");
+  assert.deepEqual(buildHaikuTool(placements).input_schema.properties.option_id.enum, placements.map((p) => p.id));
+});

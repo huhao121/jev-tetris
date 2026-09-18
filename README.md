@@ -58,6 +58,28 @@ heuristic, average placement confidence 0.69. Jev takes single-line clears readi
 holes more than the heuristic does, so the stack gets rough over time. The `priorities` list in
 `public/jev.js` is where to push it toward cleaner play.
 
+## Battle mode: Jev vs Claude Haiku
+
+`battle.html` puts Jev and Claude Haiku 4.5 on the same seeded piece sequence with the same described
+options and one shared clock. Pieces keep falling while each model thinks (gravity is configurable);
+a piece that lands before its answer arrives locks where it is. First to top out loses. The
+"wait for answers" toggle removes gravity so only decision quality is compared, and there the
+winner is whoever survives more pieces.
+
+![Battle](docs/battle.png)
+
+Haiku is asked through the Anthropic Messages API with a forced `place_piece` tool whose
+`option_id` is an enum of the offered placements, so its answer is always a legal move, the same
+constraint Jev's Choice has. The page needs an Anthropic key as well; `server.mjs` and
+`api/anthropic.js` forward it to `api.anthropic.com` without storing it.
+
+Observed results on seed 42 (one run each; Jev is not fully deterministic between runs):
+
+| Mode | Result | Jev | Claude Haiku 4.5 |
+| --- | --- | --- | --- |
+| Real time, 120 ms/row | Jev wins by survival at 0:39 | 26 lines, 79 pieces, 236 ms/move, 0 missed, $0.010 | 7 lines, 41 pieces, 792 ms/move, 7 missed, $0.094 |
+| Lockstep (no gravity) | Jev wins, survived more pieces | 52 lines, 167 pieces, 219 ms/move, $0.022 | 28 lines, 106 pieces, 832 ms/move, $0.301 |
+
 ## Run it
 
 Requires Node.js 20 or newer. There are no dependencies.
@@ -106,11 +128,14 @@ server.mjs            local static server + TypeSafe proxy
 lib/typesafe.mjs      proxy logic shared by server.mjs and api/
 api/*.js              the same proxy as Vercel serverless functions
 vercel.json           Vercel config (static public/, functions in api/)
-public/index.html     page
+lib/anthropic.mjs     Anthropic Messages API proxy for the battle page
+public/index.html     single-player page
 public/style.css      styles
 public/app.js         game loop, animation, panels
-public/tetris.js      pure engine: pieces, placements, outcome descriptions
+public/tetris.js      pure engine: pieces, placements, outcome descriptions, seeded RNG
 public/jev.js         request builder, API call with retry, answer mapping
+public/battle.html    battle page (+ battle.css, battle.js)
+public/players.js     Jev and Claude Haiku players for the battle
 test/tetris.test.mjs  node --test suite
 ```
 
