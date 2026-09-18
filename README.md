@@ -8,8 +8,12 @@ confidence, latency, token usage and the raw request/response.
 
 ## Play it
 
+**Live:** [jev-tetris.vercel.app](https://jev-tetris.vercel.app) (single player) and
+[jev-tetris.vercel.app/battle.html](https://jev-tetris.vercel.app/battle.html) (Jev vs Claude Haiku).
+Bring your own keys; the proxy stores nothing.
+
 Jev mode needs a small server because `api.typesafe.ai` rejects browser origins, so the page cannot
-be hosted as a static file. Two ways to get a URL:
+be hosted as a static file. Two ways to get your own URL:
 
 - **Deploy to Vercel in one click.** The repo ships `api/` functions that act as the proxy and a
   `vercel.json`. Your key is entered in the page, never stored on the server.
