@@ -54,8 +54,10 @@ canvas.board {
   padding: 12px 14px; text-align: center; font-weight: 600; line-height: 1.5;
 }
 .result small { display: block; color: var(--muted); font-weight: 400; font-size: 13px; }
-.compare { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
-.compare th, .compare td { padding: 2px 4px; text-align: right; white-space: nowrap; }
+.result { overflow: hidden; }
+.compare { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 8px; font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.compare col.metric { width: 40%; }
+.compare th, .compare td { padding: 2px 4px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .compare th:first-child { text-align: left; color: var(--muted); font-weight: 400; }
 .compare thead th { color: var(--text); font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
 .compare tbody tr:nth-child(even) { background: rgba(255,255,255,0.03); }
@@ -68,7 +70,7 @@ canvas.board {
 /* ---- Presentation mode (?present): boards, clock, result. Nothing else. ---- */
 body.present { background: #0b0e15; min-height: 0; overflow: hidden; }
 body.present .top, body.present .foot, body.present #setup-card, body.present #rules-card, body.present .pmove { display: none; }
-body.present .arena { grid-template-columns: 300px 260px 300px; justify-content: center; gap: 28px; padding: 14px 24px 12px; }
+body.present .arena { grid-template-columns: 300px 330px 300px; justify-content: center; gap: 14px; padding: 14px 24px 12px; }
 body.present .center { gap: 10px; padding-top: 44px; }
 body.present .present-title { display: block; text-align: center; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .present-title { display: none; }

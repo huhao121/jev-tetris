@@ -276,7 +276,8 @@ function comparisonTable(L, R) {
   const avg = (s) => (s.stats.calls ? fmtMs(s.stats.latency / s.stats.calls) : "–");
   const range = (s) => (s.stats.calls ? `${Math.round(s.stats.minLatency)}–${Math.round(s.stats.maxLatency)}` : "–");
   return `<table class="compare">
-    <thead><tr><th></th><th>${L.player.name}</th><th>${R.player.name}</th></tr></thead>
+    <colgroup><col class="metric" /><col /><col /></colgroup>
+    <thead><tr><th></th><th>${L.player.short || L.player.name}</th><th>${R.player.short || R.player.name}</th></tr></thead>
     <tbody>
       ${row("Lines", (s) => s.lines)}
       ${row("Pieces", (s) => s.pieces)}

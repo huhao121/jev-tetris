@@ -14,6 +14,7 @@ export const HAIKU_PRICE = { input: 1 / 1e6, output: 5 / 1e6 }; // $1 / $5 per M
 export function createJevPlayer(apiKey) {
   return {
     name: "Jev",
+    short: "Jev",
     model: "jev-latest",
     async decide(gameInfo, placements, signal) {
       const request = buildRequest(gameInfo, placements);
@@ -95,6 +96,7 @@ export function parseHaikuChoice(message, placements) {
 export function createHaikuPlayer(apiKey, { endpoint = "api/anthropic" } = {}) {
   return {
     name: "Claude Haiku 4.5",
+    short: "Haiku 4.5",
     model: HAIKU_MODEL,
     async decide(gameInfo, placements, signal) {
       const body = {
