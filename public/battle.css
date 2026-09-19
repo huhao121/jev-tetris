@@ -9,6 +9,7 @@
 .player-head { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .badge { font-weight: 700; font-size: 18px; padding: 4px 14px; border-radius: 999px; }
 .badge.jev { background: rgba(63, 214, 240, 0.15); color: var(--accent-2); border: 1px solid rgba(63, 214, 240, 0.4); }
+.badge.gemini { background: rgba(76, 139, 245, 0.15); color: #7fb0ff; border: 1px solid rgba(76, 139, 245, 0.45); }
 .badge.haiku { background: rgba(244, 163, 64, 0.15); color: #f4a340; border: 1px solid rgba(244, 163, 64, 0.4); }
 .model { font-size: 12px; }
 canvas.board {

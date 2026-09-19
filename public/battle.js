@@ -6,7 +6,7 @@
 // garbage for the opponent and the first to top out loses; with independent
 // boards the survivor must outlast the loser's piece count.
 
-import { createJevPlayer, createHaikuPlayer } from "./players.js";
+import { createJevPlayer, createHaikuPlayer, createGeminiPlayer, HAIKU_MODEL, GEMINI_MODEL } from "./players.js";
 import {
   SPEEDUPS,
   PRESENT,
@@ -23,11 +23,21 @@ import {
 } from "./arena.js";
 
 const $ = (id) => document.getElementById(id);
-const STORAGE = { jev: "jev_tetris_api_key", haiku: "jev_tetris_anthropic_key" };
+const STORAGE = { jev: "jev_tetris_api_key", haiku: "jev_tetris_anthropic_key", gemini: "jev_tetris_gemini_key" };
+const OPPONENTS = {
+  haiku: { name: "Claude Haiku 4.5", short: "Haiku 4.5", badge: "haiku", label: `${HAIKU_MODEL} · Anthropic`, keyName: "Anthropic", create: (key) => createHaikuPlayer(key) },
+  gemini: { name: "Gemini 3.8 Flash", short: "Gemini 3.8", badge: "gemini", label: `${GEMINI_MODEL} · Google`, keyName: "Gemini", create: (key) => createGeminiPlayer(key) },
+};
 
 const ui = {
   jevKey: $("jevKey"),
   haikuKey: $("haikuKey"),
+  geminiKey: $("geminiKey"),
+  haikuKeyField: $("haikuKeyField"),
+  geminiKeyField: $("geminiKeyField"),
+  opponent: $("opponent"),
+  badgeR: $("badgeR"),
+  modelR: $("modelR"),
   remember: $("remember"),
   gravity: $("gravity"),
   gravityLabel: $("gravityLabel"),
@@ -150,11 +160,32 @@ function finish(winner, loser, reason) {
   battle = null;
 }
 
+function opponentChoice() {
+  const key = new URLSearchParams(location.search).get("opponent");
+  if (key && OPPONENTS[key] && ui.opponent.value !== key) ui.opponent.value = key;
+  return OPPONENTS[ui.opponent.value] || OPPONENTS.haiku;
+}
+
+function opponentKey() {
+  return (ui.opponent.value === "gemini" ? ui.geminiKey : ui.haikuKey).value.trim();
+}
+
+function renderOpponent() {
+  const opp = opponentChoice();
+  ui.badgeR.textContent = opp.name;
+  ui.badgeR.className = `badge ${opp.badge}`;
+  ui.modelR.textContent = opp.label;
+  ui.haikuKeyField.classList.toggle("hidden", ui.opponent.value === "gemini");
+  ui.geminiKeyField.classList.toggle("hidden", ui.opponent.value !== "gemini");
+  document.title = `Jev vs ${opp.name}`;
+}
+
 async function startBattle() {
   const jevKey = ui.jevKey.value.trim();
-  const haikuKey = ui.haikuKey.value.trim();
-  if (!jevKey || !haikuKey) {
-    showError("Both keys are needed: a TypeSafe key for Jev and an Anthropic key for Claude Haiku.");
+  const opp = opponentChoice();
+  const oppKey = opponentKey();
+  if (!jevKey || !oppKey) {
+    showError(`Both keys are needed: a TypeSafe key for Jev and a ${opp.keyName} key for ${opp.name}.`);
     return;
   }
   hideError();
@@ -165,7 +196,7 @@ async function startBattle() {
   const lockstep = ui.lockstep.checked;
   const garbage = ui.garbage.checked;
   const limitMs = Math.max(1, Number(ui.limit.value) || 5) * 60_000;
-  sides = [makeSide("L", createJevPlayer(jevKey), sideEls("L")), makeSide("R", createHaikuPlayer(haikuKey), sideEls("R"))];
+  sides = [makeSide("L", createJevPlayer(jevKey), sideEls("L")), makeSide("R", opp.create(oppKey), sideEls("R"))];
   sides[0].opponent = sides[1];
   sides[1].opponent = sides[0];
   for (const s of sides) resetSide(s, seed);
@@ -208,9 +239,9 @@ function persistKeys() {
     if (ui.remember.checked) {
       localStorage.setItem(STORAGE.jev, ui.jevKey.value.trim());
       localStorage.setItem(STORAGE.haiku, ui.haikuKey.value.trim());
+      localStorage.setItem(STORAGE.gemini, ui.geminiKey.value.trim());
     } else {
-      localStorage.removeItem(STORAGE.jev);
-      localStorage.removeItem(STORAGE.haiku);
+      for (const k of Object.values(STORAGE)) localStorage.removeItem(k);
     }
   } catch {
     /* storage unavailable */
@@ -220,6 +251,10 @@ function persistKeys() {
 ui.start.addEventListener("click", startBattle);
 ui.stop.addEventListener("click", stopBattle);
 ui.remember.addEventListener("change", persistKeys);
+ui.opponent.addEventListener("change", () => {
+  renderOpponent();
+  if (!battle) sides[1].player = { name: opponentChoice().name, short: opponentChoice().short };
+});
 ui.gravity.addEventListener("input", () => {
   ui.gravityLabel.textContent = `${ui.gravity.value} ms per row`;
   if (!battle) renderLevel();
@@ -230,12 +265,15 @@ renderLevel();
 try {
   const j = localStorage.getItem(STORAGE.jev);
   const h = localStorage.getItem(STORAGE.haiku);
+  const g = localStorage.getItem(STORAGE.gemini);
   if (j) ui.jevKey.value = j;
   if (h) ui.haikuKey.value = h;
-  if (j || h) ui.remember.checked = true;
+  if (g) ui.geminiKey.value = g;
+  if (j || h || g) ui.remember.checked = true;
 } catch {
   /* storage unavailable */
 }
 
-sides = [makeSide("L", { name: "Jev", short: "Jev" }, sideEls("L")), makeSide("R", { name: "Claude Haiku 4.5", short: "Haiku 4.5" }, sideEls("R"))];
+renderOpponent();
+sides = [makeSide("L", { name: "Jev", short: "Jev" }, sideEls("L")), makeSide("R", { name: opponentChoice().name, short: opponentChoice().short }, sideEls("R"))];
 for (const s of sides) previewSide(s, Number(ui.seed.value) || 42);

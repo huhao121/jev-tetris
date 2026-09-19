@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Jev vs Claude Haiku</title>
+  <title>Jev vs the LLMs</title>
   <meta name="description" content="Two models play the same Tetris piece sequence in real time. First to top out loses." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='6' height='14' fill='%233fd6f0'/><rect x='9' y='1' width='6' height='14' fill='%23f4a340'/></svg>" />
   <link rel="stylesheet" href="style.css" />
@@ -12,7 +12,7 @@
 <body>
   <header class="top">
     <div>
-      <h1>Jev vs Claude Haiku</h1>
+      <h1>Jev vs the LLMs</h1>
       <p class="sub">
         Same piece sequence, same options, same clock. Pieces keep falling while each model thinks,
         and gravity gets stronger as the minutes pass; a piece that lands before its answer arrives
@@ -44,9 +44,16 @@
       <div class="card" id="setup-card">
         <h2>Keys</h2>
         <label class="field">TypeSafe key <input id="jevKey" type="password" placeholder="apikey_…" autocomplete="off" spellcheck="false" /></label>
-        <label class="field">Anthropic key <input id="haikuKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" /></label>
-        <label class="remember"><input id="remember" type="checkbox" /> Remember both in this browser</label>
-        <p class="hint">Both keys go from this page to the proxy in <code>server.mjs</code>, which forwards each to its API and stores nothing.</p>
+        <label class="field">Opponent
+          <select id="opponent">
+            <option value="haiku" selected>Claude Haiku 4.5 (Anthropic)</option>
+            <option value="gemini">Gemini 3.8 Flash (Google)</option>
+          </select>
+        </label>
+        <label class="field" id="haikuKeyField">Anthropic key <input id="haikuKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" /></label>
+        <label class="field hidden" id="geminiKeyField">Gemini key <input id="geminiKey" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false" /></label>
+        <label class="remember"><input id="remember" type="checkbox" /> Remember keys in this browser</label>
+        <p class="hint">Keys go from this page to the proxy in <code>server.mjs</code>, which forwards each to its API and stores nothing.</p>
       </div>
       <div class="card" id="rules-card">
         <h2>Rules</h2>
@@ -78,11 +85,11 @@
 
     <section class="player" id="right">
       <div class="player-head">
-        <span class="badge haiku">Claude Haiku 4.5</span>
-        <span class="model muted">claude-haiku-4-5 · Anthropic</span>
+        <span class="badge haiku" id="badgeR">Claude Haiku 4.5</span>
+        <span class="model muted" id="modelR">claude-haiku-4-5 · Anthropic</span>
       </div>
       <div class="board-wrap">
-        <canvas class="board" id="boardR" width="240" height="480" aria-label="Claude Haiku's board"></canvas>
+        <canvas class="board" id="boardR" width="240" height="480" aria-label="Opponent's board"></canvas>
         <div class="overlay hidden" id="overlayR"></div>
       </div>
       <div class="incoming" id="incomingR"></div>
@@ -93,7 +100,8 @@
 
   <footer class="foot">
     Each side sees the same board text and the same described placement list. Jev answers with a Choice
-    distribution; Haiku answers with an option id in plain text. Latency is part of the game.
+    distribution; the opponent answers through a forced function call whose argument is one of the option
+    ids. Latency is part of the game.
   </footer>
 
   <script type="module" src="battle.js"></script>

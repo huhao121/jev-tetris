@@ -181,3 +181,16 @@ test("garbage rows push the stack up and report overflow at the top", async () =
   assert.equal(addGarbage(tall, 2, 0).overflow, true);
   assert.equal(addGarbage(tall, 1, 0).overflow, false);
 });
+
+test("Gemini tool schema enumerates the options and the parser reads the function call", async () => {
+  const { buildGeminiTool, parseGeminiChoice } = await import("../public/players.js");
+  const placements = enumeratePlacements(emptyBoard(), "J");
+  const decl = buildGeminiTool(placements).functionDeclarations[0];
+  assert.equal(decl.name, "place_piece");
+  assert.deepEqual(decl.parameters.properties.option_id.enum, placements.map((p) => p.id));
+  const resp = (parts) => ({ candidates: [{ content: { parts } }] });
+  assert.equal(parseGeminiChoice(resp([{ functionCall: { name: "place_piece", args: { option_id: "p2" } } }]), placements).id, "p2");
+  assert.equal(parseGeminiChoice(resp([{ text: "I'd go with p4." }]), placements).id, "p4");
+  assert.equal(parseGeminiChoice(resp([{ functionCall: { name: "place_piece", args: { option_id: "p999" } } }]), placements), null);
+  assert.equal(parseGeminiChoice({}, placements), null);
+});
