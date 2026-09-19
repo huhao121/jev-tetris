@@ -11,16 +11,21 @@ export const HAIKU_PRICE = { input: 1 / 1e6, output: 5 / 1e6 }; // $1 / $5 per M
 
 // ---- Jev ----------------------------------------------------------------------
 
-export function createJevPlayer(apiKey) {
+// `hosted: true` routes through the server's Vercel AI Gateway credential
+// (api/jev-hosted), so no visitor key is needed; otherwise the visitor's
+// TypeSafe key goes to api/systemone.
+export function createJevPlayer(apiKey, { hosted = false } = {}) {
   return {
     name: "Jev",
     short: "Jev",
-    model: "jev-latest",
+    model: hosted ? "typesafe-ai/jev via Vercel AI Gateway" : "jev-latest",
+    hosted,
     async decide(gameInfo, placements, signal) {
       const request = buildRequest(gameInfo, placements);
       // The battle only needs the placement Choice; drop the extra questions.
       request.questions = { placement: request.questions.placement };
-      const { response, latencyMs } = await askJev(request, apiKey, { signal, maxAttempts: 2 });
+      const endpoint = hosted ? "api/jev-hosted" : "api/systemone";
+      const { response, latencyMs } = await askJev(request, hosted ? "" : apiKey, { signal, maxAttempts: 2, endpoint });
       const { chosen, confidence } = pickPlacement(response, placements);
       const usage = response.usage || {};
       return {

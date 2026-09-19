@@ -107,6 +107,8 @@ const comparisonRows = [
 let sides = [];
 let match = null; // { ramp, abort, timer, limitMs, garbage }
 let human = null; // the human side while a match runs
+// True when the server can reach Jev through Vercel AI Gateway on its own credential.
+let hostedJev = false;
 
 function gravityNow() {
   return match ? match.ramp.gravityNow() : Number(ui.gravity.value);
@@ -368,8 +370,9 @@ function finish(winner, loser, reason) {
 
 async function startMatch() {
   const jevKey = ui.jevKey.value.trim();
-  if (!jevKey) {
-    showError("Jev needs a TypeSafe key to play. Paste yours above.");
+  const hosted = !jevKey && hostedJev;
+  if (!jevKey && !hosted) {
+    showError("Jev needs a TypeSafe key to play. Paste yours below.");
     ui.jevKey.focus();
     return;
   }
@@ -381,7 +384,8 @@ async function startMatch() {
   const garbage = ui.garbage.checked;
   const jevGravity = ui.jevGravity.checked;
   const limitMs = Math.max(1, Number(ui.limit.value) || 5) * 60_000;
-  sides = [makeSide("L", HUMAN, sideEls("L"), humanStatsRows), makeSide("R", createJevPlayer(jevKey), sideEls("R"))];
+  sides = [makeSide("L", HUMAN, sideEls("L"), humanStatsRows), makeSide("R", createJevPlayer(jevKey, { hosted }), sideEls("R"))];
+  $("modelR").textContent = hosted ? "typesafe-ai/jev · Vercel AI Gateway" : "jev-latest · TypeSafe";
   sides[0].opponent = sides[1];
   sides[1].opponent = sides[0];
   for (const s of sides) resetSide(s, seed);
@@ -427,6 +431,20 @@ function persistKey() {
     /* storage unavailable */
   }
 }
+
+function renderHosted() {
+  $("hostedNote").classList.toggle("hidden", !hostedJev);
+  $("keyNote").classList.toggle("hidden", hostedJev);
+  $("setupTitle").textContent = hostedJev ? "Jev's key (optional)" : "Jev's key";
+}
+
+fetch("api/config", { cache: "no-store" })
+  .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+  .then((cfg) => {
+    hostedJev = Boolean(cfg.hostedJev);
+    renderHosted();
+  })
+  .catch(() => renderHosted());
 
 ui.start.addEventListener("click", startMatch);
 ui.stop.addEventListener("click", giveUp);

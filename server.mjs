@@ -23,6 +23,7 @@ import {
 } from "./lib/typesafe.mjs";
 import { forwardToAnthropic } from "./lib/anthropic.mjs";
 import { forwardToGemini } from "./lib/gemini.mjs";
+import { forwardToGateway, hostedJevAvailable } from "./lib/gateway.mjs";
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "public");
@@ -92,6 +93,11 @@ const server = createServer(async (req, res) => {
       writeResult(res, await forwardToAnthropic({ key: req.headers["x-api-key"] || "", body }));
       return;
     }
+    if (url.pathname === "/api/jev-hosted" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      writeResult(res, await forwardToGateway({ body }));
+      return;
+    }
     if (url.pathname === "/api/gemini" && req.method === "POST") {
       const body = await readJsonBody(req);
       writeResult(res, await forwardToGemini({ key: req.headers["x-goog-api-key"] || "", body }));
@@ -107,7 +113,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (url.pathname === "/api/config" && req.method === "GET") {
-      writeResult(res, configResult());
+      writeResult(res, configResult({ hostedJev: hostedJevAvailable() }));
       return;
     }
     if (url.pathname.startsWith("/api/")) {

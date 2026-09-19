@@ -194,3 +194,33 @@ test("Gemini tool schema enumerates the options and the parser reads the functio
   assert.equal(parseGeminiChoice(resp([{ functionCall: { name: "place_piece", args: { option_id: "p999" } } }]), placements), null);
   assert.equal(parseGeminiChoice({}, placements), null);
 });
+
+test("gateway adapter translates noul/boolean and derives confidence", async () => {
+  const { toGatewayRequest, fromGatewayResponse } = await import("../lib/gateway.mjs");
+  const placements = enumeratePlacements(emptyBoard(), "T");
+  const request = buildRequest({ board: emptyBoard(), piece: "T", nextPiece: "I", stats: placements[0].before, linesCleared: 0 }, placements);
+  const gw = toGatewayRequest(request);
+  assert.equal(gw.questions.next_piece_fits.type, "boolean");
+  assert.equal(gw.questions.placement.type, "choice");
+  assert.deepEqual(Object.keys(gw.questions.placement.criteria), placements.map((p) => p.id));
+  assert.equal(gw.model, undefined);
+  const back = fromGatewayResponse(
+    {
+      answers: {
+        placement: { type: "choice", choice: "p2", probabilities: { p0: 0.1, p1: 0.2, p2: 0.7 } },
+        next_piece_fits: { type: "boolean", probability: 0.8 },
+        board_health: { type: "score", score: 1.2, probabilities: { 0: 0.2, 1: 0.5, 2: 0.3 } },
+      },
+      usage: { inputTokens: 1200, outputTokens: 30 },
+    },
+    request.questions,
+  );
+  assert.equal(back.answers.placement.choice, "p2");
+  assert.ok(Math.abs(back.answers.placement.confidence - 0.5) < 1e-9);
+  assert.equal(back.answers.next_piece_fits.type, "noul");
+  assert.equal(back.answers.next_piece_fits.noul, 0.8);
+  assert.equal(back.answers.board_health.legend["1"].startsWith("Fine"), true);
+  assert.equal(back.usage.input_tokens, 1200);
+  const { pickPlacement } = await import("../public/jev.js");
+  assert.equal(pickPlacement(back, placements).chosen.id, "p2");
+});

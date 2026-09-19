@@ -57,10 +57,13 @@
       <div id="result" class="result hidden"></div>
       <div id="error" class="error hidden" role="alert"></div>
       <div class="card" id="setup-card">
-        <h2>Jev's key</h2>
-        <label class="field">TypeSafe key <input id="jevKey" type="password" placeholder="apikey_…" autocomplete="off" spellcheck="false" /></label>
+        <h2 id="setupTitle">Jev's key</h2>
+        <p class="hint hidden" id="hostedNote">No key needed: this site reaches Jev through
+          <a href="https://vercel.com/ai-gateway/models/jev" target="_blank" rel="noopener">Vercel AI Gateway</a>
+          on its own credential. Leave the field blank to use it, or paste your own TypeSafe key to bill your account instead.</p>
+        <label class="field">TypeSafe key <input id="jevKey" type="password" placeholder="apikey_… (optional here)" autocomplete="off" spellcheck="false" /></label>
         <label class="remember"><input id="remember" type="checkbox" /> Remember in this browser</label>
-        <p class="hint">Jev needs your TypeSafe key. It goes from this page to the proxy in <code>server.mjs</code>, which forwards it and stores nothing.</p>
+        <p class="hint" id="keyNote">Jev needs your TypeSafe key. It goes from this page to the proxy in <code>server.mjs</code>, which forwards it and stores nothing.</p>
       </div>
       <div class="card" id="controls-card">
         <h2>Controls</h2>
@@ -93,7 +96,7 @@
     <section class="player" id="right">
       <div class="player-head">
         <span class="badge jev">Jev</span>
-        <span class="model muted">jev-latest · TypeSafe</span>
+        <span class="model muted" id="modelR">jev-latest · TypeSafe</span>
       </div>
       <div class="board-wrap">
         <canvas class="board" id="boardR" width="240" height="480" aria-label="Jev's board"></canvas>
