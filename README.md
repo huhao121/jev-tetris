@@ -1,11 +1,11 @@
-# Jev vs Claude Haiku: real-time Tetris
+# Jev vs the LLMs: real-time Tetris
 
 Two AI models play Tetris against each other in real time. [Jev](https://docs.typesafe.ai), TypeSafe's
-System One model, faces Claude Haiku 4.5. Same piece sequence, same options, same clock. Every line you
-clear lands on your opponent's board as a garbage row. Whoever tops out first loses.
+System One model, faces Claude Haiku 4.5 or Gemini 3.8 Flash. Same piece sequence, same options, same
+clock. Every line you clear lands on your opponent's board as a garbage row. Whoever tops out first loses.
 
 **Play it live:** [jev-tetris.vercel.app](https://jev-tetris.vercel.app)
-(bring a TypeSafe key and an Anthropic key; the proxy stores nothing).
+(bring a TypeSafe key plus an Anthropic or Gemini key; the proxy stores nothing).
 
 ![Jev vs Claude Haiku, versus mode](docs/battle.png)
 
@@ -25,8 +25,10 @@ Each side runs its own real-time game loop on a seeded piece sequence shared by 
   If the push shoves the stack out of the top, that player is out, and the first to top out loses.
 - **Same information for both.** Code enumerates every legal placement and describes each outcome in
   words (lines cleared, holes created, height, surface, wells). Jev answers with a Choice question
-  over those options; Haiku answers through a forced `place_piece` tool whose `option_id` is an enum
-  of the same options. Both are constrained to legal moves; latency is part of the game.
+  over those options; the opponent (Claude Haiku 4.5 via the Anthropic API, or Gemini 3.8 Flash via
+  the Gemini API) answers through a forced `place_piece` function call whose `option_id` is an enum
+  of the same options. Both are constrained to legal moves; latency is part of the game. Pick the
+  opponent in the setup card or with `?opponent=gemini`.
 - **Stats per model.** Lines, pieces, garbage sent and received, average and min/max latency, missed
   deadlines, invalid answers, model calls, tokens in and out, cost and cost per move, live under each
   board and in a side-by-side table when the match ends.
@@ -39,6 +41,22 @@ for a stripped-down layout meant for recordings.
 ### Results so far
 
 Seed 42, one run each. Jev is not fully deterministic between runs, so treat these as samples.
+
+**Jev vs Gemini 3.8 Flash**
+
+![Jev vs Gemini 3.8 Flash, versus mode](docs/battle-gemini.png)
+
+| Mode | Result | Jev | Gemini 3.8 Flash |
+| --- | --- | --- | --- |
+| Versus, gravity 150 ms/row rising 15% every 20 s | Jev wins at 0:18: Gemini topped out first | 6 lines, 35 pieces, sent 6 garbage, 212 ms/move, 0 missed, $0.005 | 0 lines, 13 pieces, 1346 ms/move, 8 missed, $0.008 |
+| Lockstep (no gravity), independent boards | Gemini wins: survived past Jev's 105 pieces | 26 lines, 105 pieces, 205 ms/move, $0.014 | 34 lines, 106 pieces, 1881 ms/move (up to 6.3 s), 11 invalid, $0.231 |
+
+Gemini 3.8 Flash cannot switch thinking off (its lowest level still spends a few dozen thinking tokens
+per move), so it answers in 0.7 to 2 s and in real time it misses most deadlines. Given unlimited time
+it places pieces better than Jev on this seed (0.32 lines per piece against 0.25) at about 17x the cost
+per move.
+
+**Jev vs Claude Haiku 4.5**
 
 | Mode | Result | Jev | Claude Haiku 4.5 |
 | --- | --- | --- | --- |
@@ -120,8 +138,8 @@ Any host that runs `npm start` on a Node 20+ box works too.
 
 `api.typesafe.ai` rejects browser origins (CORS), so the page cannot call it directly.
 [`server.mjs`](server.mjs) serves the static files and forwards `POST /api/systemone`,
-`GET /api/models` and `POST /api/anthropic` to TypeSafe and Anthropic with the key the page sent
-in the request. It keeps no state and never logs a key. The same logic runs as Vercel functions
+`GET /api/models`, `POST /api/anthropic` and `POST /api/gemini` to TypeSafe, Anthropic and Google
+with the key the page sent in the request. It keeps no state and never logs a key. The same logic runs as Vercel functions
 in `api/`.
 
 Optional environment variables:
@@ -132,6 +150,7 @@ Optional environment variables:
 | `TYPESAFE_API_KEY` | If set, visitors who leave the TypeSafe key blank use this key. Leave unset for a public deployment. |
 | `TYPESAFE_API_BASE` | Override the TypeSafe API base URL. |
 | `ANTHROPIC_API_BASE` | Override the Anthropic API base URL. |
+| `GEMINI_API_BASE` | Override the Gemini API base URL. |
 
 Behind a corporate proxy, run with `NODE_USE_ENV_PROXY=1` so Node's `fetch` honours `HTTPS_PROXY`.
 
@@ -151,12 +170,13 @@ answer mapping, the Haiku tool schema and reply parser).
 server.mjs            local static server + proxies
 lib/typesafe.mjs      TypeSafe proxy logic shared by server.mjs and api/
 lib/anthropic.mjs     Anthropic Messages API proxy for the battle
+lib/gemini.mjs        Gemini generateContent proxy for the battle
 api/*.js              the same proxies as Vercel serverless functions
 vercel.json           Vercel config (static public/, functions in api/)
 public/index.html     battle page (+ battle.css, battle.js)
 public/play.html      human vs Jev (+ play.js)
 public/arena.js       shared two-board machinery: sides, drawing, stats, garbage, gravity ramp, model loop
-public/players.js     Jev and Claude Haiku players for the battle
+public/players.js     Jev, Claude Haiku and Gemini players for the battle
 public/solo.html      single-player page (+ style.css, app.js)
 public/battle.html    redirect to the front page for old links
 public/tetris.js      pure engine: pieces, placements, outcome descriptions, garbage, seeded RNG
@@ -167,7 +187,7 @@ test/tetris.test.mjs  node --test suite
 ## Tuning
 
 Everything Jev sees is in `buildState` and `buildQuestions` in [`public/jev.js`](public/jev.js);
-Haiku's system prompt and tool are in [`public/players.js`](public/players.js). The `priorities`
+the Haiku and Gemini prompts and tools are in [`public/players.js`](public/players.js). The `priorities`
 list inside Jev's `placement` question is where to change how it weighs line clears against holes
 and height. The word buckets for each feature live in the `describe*` helpers in
 [`public/tetris.js`](public/tetris.js). Keep the numbers in code and hand the models the comparison.
