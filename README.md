@@ -77,14 +77,7 @@ and Jev on the right with the same versus rules: shared piece sequence, rising g
 lines become garbage for the other side, first to top out loses. Arrow keys move, up or X rotates,
 Z rotates back, down soft-drops, space hard-drops; on touch screens a button row appears under the
 board. You get a ghost piece and a short lock delay. Gravity starts gentler than in the model battle
-(500 ms per row, 10% faster every 30 s) and is adjustable.
-
-**No key needed on the live site.** Jev is served through
-[Vercel AI Gateway](https://vercel.com/ai-gateway/models/jev) (`typesafe-ai/jev`), authenticated with
-the deployment's own OIDC token, so visitors just press Start. Paste a TypeSafe key to bill your own
-account instead. `lib/gateway.mjs` translates between TypeSafe's request shape and the gateway's
-evaluation-model protocol (the yes/no question type is `boolean` there rather than `noul`, and
-confidence is derived from the probability spread because the gateway does not return one).
+(500 ms per row, 10% faster every 30 s) and is adjustable. Only a TypeSafe key is needed.
 
 ## Single player: Jev on its own
 
@@ -155,8 +148,6 @@ Optional environment variables:
 | --- | --- |
 | `PORT` | Port to listen on. Default `3000`. |
 | `TYPESAFE_API_KEY` | If set, visitors who leave the TypeSafe key blank use this key. Leave unset for a public deployment. |
-| `AI_GATEWAY_API_KEY` | Vercel AI Gateway key for hosted Jev on the play page. On Vercel the deployment's OIDC token is used automatically when this is unset (enable "Secure backend access with OIDC federation" in the project settings). |
-| `AI_GATEWAY_BASE` | Override the gateway base URL (default `https://ai-gateway.vercel.sh/v4/ai`). |
 | `TYPESAFE_API_BASE` | Override the TypeSafe API base URL. |
 | `ANTHROPIC_API_BASE` | Override the Anthropic API base URL. |
 | `GEMINI_API_BASE` | Override the Gemini API base URL. |
@@ -180,7 +171,6 @@ server.mjs            local static server + proxies
 lib/typesafe.mjs      TypeSafe proxy logic shared by server.mjs and api/
 lib/anthropic.mjs     Anthropic Messages API proxy for the battle
 lib/gemini.mjs        Gemini generateContent proxy for the battle
-lib/gateway.mjs       hosted Jev through Vercel AI Gateway (evaluation-model protocol adapter)
 api/*.js              the same proxies as Vercel serverless functions
 vercel.json           Vercel config (static public/, functions in api/)
 public/index.html     battle page (+ battle.css, battle.js)

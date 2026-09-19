@@ -99,13 +99,13 @@ export class JevError extends Error {
 
 // Calls the local proxy (server.mjs), which forwards to api.typesafe.ai with
 // the key in the Authorization header. Retries 429/529 with backoff.
-export async function askJev(request, apiKey, { signal, maxAttempts = 4, endpoint = "api/systemone" } = {}) {
+export async function askJev(request, apiKey, { signal, maxAttempts = 4 } = {}) {
   let delay = 500;
   for (let attempt = 1; ; attempt++) {
     const started = performance.now();
     const headers = { "Content-Type": "application/json" };
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-    const res = await fetch(endpoint, {
+    const res = await fetch("api/systemone", {
       method: "POST",
       headers,
       body: JSON.stringify(request),
