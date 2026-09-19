@@ -95,7 +95,7 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === "/api/jev-hosted" && req.method === "POST") {
       const body = await readJsonBody(req);
-      writeResult(res, await forwardToGateway({ body }));
+      writeResult(res, await forwardToGateway({ body, req }));
       return;
     }
     if (url.pathname === "/api/gemini" && req.method === "POST") {
@@ -113,7 +113,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (url.pathname === "/api/config" && req.method === "GET") {
-      writeResult(res, configResult({ hostedJev: hostedJevAvailable() }));
+      writeResult(res, configResult({ hostedJev: hostedJevAvailable(req) }));
       return;
     }
     if (url.pathname.startsWith("/api/")) {

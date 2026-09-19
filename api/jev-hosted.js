@@ -8,5 +8,5 @@ export default async function handler(req, res) {
     return;
   }
   const body = await readJsonBody(req);
-  writeResult(res, await forwardToGateway({ body }));
+  writeResult(res, await forwardToGateway({ body, req }));
 }
