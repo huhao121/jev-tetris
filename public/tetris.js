@@ -464,6 +464,91 @@ export function describeAction(a) {
   };
 }
 
+// ---- Perception for the models: the situation in words -----------------------------
+// What a player sees, described rather than drawn: the piece, where it is,
+// what is under it, and the shape of the stack. Facts only; nothing about
+// what a move would lead to or which move is good.
+
+const SHAPE_NOTES = {
+  I: "four cells in a straight line",
+  O: "a two by two square",
+  T: "three in a row with one sticking out of the middle",
+  S: "two on top shifted right over two below",
+  Z: "two on top shifted left over two below",
+  J: "three in a row with a hook at one end",
+  L: "three in a row with a hook at one end",
+};
+
+const ORIENTATIONS = {
+  I: ["flat, four wide and one tall", "upright, one wide and four tall"],
+  O: ["square"],
+  T: ["flat with the bump on top", "upright with the bump pointing right", "flat with the bump pointing down", "upright with the bump pointing left"],
+  S: ["flat, top pair to the right", "upright, stepping down to the right"],
+  Z: ["flat, top pair to the left", "upright, stepping down to the left"],
+  J: ["flat with the hook up on the left", "upright with the hook at the top right", "flat with the hook down on the right", "upright with the hook at the bottom left"],
+  L: ["flat with the hook up on the right", "upright with the hook at the bottom right", "flat with the hook down on the left", "upright with the hook at the top left"],
+};
+
+function columnRange(cols) {
+  const left = Math.min(...cols) + 1;
+  const right = Math.max(...cols) + 1;
+  return left === right ? `column ${left}` : `columns ${left}-${right}`;
+}
+
+function relativeTo(cols, pieceCols) {
+  const pl = Math.min(...pieceCols);
+  const pr = Math.max(...pieceCols);
+  const l = Math.min(...cols);
+  const r = Math.max(...cols);
+  if (r < pl) return `to the left of the piece, ${pl - r} column${pl - r === 1 ? "" : "s"} away`;
+  if (l > pr) return `to the right of the piece, ${l - pr} column${l - pr === 1 ? "" : "s"} away`;
+  if (l >= pl && r <= pr) return "directly under the piece";
+  return "partly under the piece";
+}
+
+// Runs of columns sharing the extreme height, e.g. "columns 1-3 (empty)".
+function extremeArea(heights, pick) {
+  const target = pick(...heights);
+  const cols = heights.map((h, i) => (h === target ? i : -1)).filter((i) => i >= 0);
+  // keep the first contiguous run
+  const run = [cols[0]];
+  for (let i = 1; i < cols.length && cols[i] === cols[i - 1] + 1; i++) run.push(cols[i]);
+  return { cols: run, height: target };
+}
+
+function rowsWord(n) {
+  return n === 0 ? "empty" : n === 1 ? "1 row high" : `${n} rows high`;
+}
+
+export function describeSituation(board, piece, state, stats = boardStats(board)) {
+  const cells = PIECES[piece][state.rotation].cells;
+  const pieceCols = [...new Set(cells.map(([cx]) => state.x + cx))].sort((a, b) => a - b);
+  const landY = dropY(board, cells, state.x, state.y);
+  const under = pieceCols.map((c) => stats.heights[c]);
+  const underWords = under.every((h) => h === under[0]) ? `${rowsWord(under[0])}, level` : `${under.join(", ")} rows high, uneven`;
+  const lowest = extremeArea(stats.heights, Math.min);
+  const highest = extremeArea(stats.heights, Math.max);
+  const wells = stats.wells.map((w) => `column ${w.column + 1} (${w.depth} deeper than its neighbours, ${relativeTo([w.column], pieceCols)})`);
+  return {
+    falling_piece: {
+      shape: `${piece}: ${SHAPE_NOTES[piece]}`,
+      orientation: ORIENTATIONS[piece][state.rotation],
+      columns: columnRange(pieceCols),
+      fall: describeFall(landY - state.y),
+      stack_under_it: underWords,
+    },
+    stack: {
+      column_heights_left_to_right: stats.heights,
+      overall_height: describeHeight(stats.maxHeight),
+      surface: describeSurface(stats.bumpiness),
+      holes: describeHoles(stats.holes),
+      lowest_area: `${columnRange(lowest.cols)} (${rowsWord(lowest.height)}), ${relativeTo(lowest.cols, pieceCols)}`,
+      highest_area: `${columnRange(highest.cols)} (${rowsWord(highest.height)}), ${relativeTo(highest.cols, pieceCols)}`,
+      deep_wells: wells.length ? wells.join("; ") : "none",
+    },
+  };
+}
+
 export function boardToText(board) {
   return board.map((row) => row.map((c) => (c ? "#" : ".")).join(""));
 }

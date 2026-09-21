@@ -25,15 +25,16 @@ Each side runs its own real-time game loop on a seeded piece sequence shared by 
 - **Versus.** Every cleared line becomes a garbage row (full except one gap) queued for the opponent
   and inserted under their stack when their current piece locks. A red counter shows incoming rows.
   If the push shoves the stack out of the top, that player is out, and the first to top out loses.
-- **One move at a time, like a player at the keyboard.** Every request is only what a player sees:
-  the board with the falling piece marked `@`, the next piece, and the controls that work right now
-  (left, right, rotate, drop) with a one-line hint each; drop sends the piece straight to the
-  bottom at once, and gravity is the only other way down. The model picks one, the move is
-  applied, and the next request goes out immediately. Gravity keeps pulling the piece down between
-  answers, and a piece that comes to rest locks 400 ms later unless it is moved. No heights, no
-  outcome summaries and no strategy come from the code: the objective is the game's own, survive
-  and clear lines. `node tools/jev-request-sample.mjs` prints the exact request Jev sees for a
-  sample state; [`docs/jev-request-sample.json`](docs/jev-request-sample.json) is its output.
+- **One move at a time, like a player at the keyboard.** Every request describes what a player
+  sees, in words, because Jev reads text rather than grids: the falling piece and its orientation,
+  which columns it is in, how far it has to fall, what is under it, the column heights, and where
+  the lowest and highest areas of the stack are relative to the piece. Then the controls that work
+  right now (left, right, rotate, drop) with a one-line hint each; drop sends the piece straight to
+  the bottom at once, and gravity is the only other way down. The model picks one, the move is
+  applied, and the next request goes out immediately. Code describes, it never judges: nothing
+  about what a move would lead to, and no strategy. The objective is the game's own, survive and
+  clear lines. `node tools/jev-request-sample.mjs` prints the exact request Jev sees for a sample
+  state; [`docs/jev-request-sample.json`](docs/jev-request-sample.json) is its output.
 - **Stats per model.** Lines, pieces, garbage sent and received, average and min/max latency, missed
   deadlines, invalid answers, model calls, tokens in and out, cost and cost per move, live under each
   board and in a side-by-side table when the match ends.

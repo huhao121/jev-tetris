@@ -2,13 +2,14 @@
 //
 // The model plays like a person at the keyboard: every request shows the
 // board with the falling piece in it and asks for one move (left, right,
-// rotate or drop). The state is only what a player sees, the board and
-// the next piece; the options are only the controls (left, right, rotate,
-// drop), each with a one-line hint of what it does. Code just leaves out moves
-// that are blocked right now. Nothing about strategy is prescribed: the
-// objective is the game's own.
+// rotate or drop). The state is what a player sees, put into words because
+// Jev reads text rather than grids: the piece, its orientation, where it is,
+// what is under it, and the shape of the stack. Facts only: code says nothing
+// about what a move would lead to or which move is good. The options are the
+// controls, each with a one-line hint of what it does; blocked ones are left
+// out. Nothing about strategy is prescribed: the objective is the game's own.
 
-import { boardWithPiece } from "./tetris.js";
+import { describeSituation } from "./tetris.js";
 
 export const MODEL = "jev-latest";
 
@@ -45,15 +46,16 @@ export const HEALTH_LEVELS = [
   "Critical: stack near the top, the game may be lost within a few pieces",
 ];
 
-// stepInfo: { board, piece, state: { rotation, x, y }, nextPiece, linesCleared, versus }
+// stepInfo: { board, piece, state: { rotation, x, y }, nextPiece, stats, linesCleared, versus }
 export function buildState(stepInfo) {
-  const { board, piece, state, nextPiece, linesCleared, versus } = stepInfo;
+  const { board, piece, state, nextPiece, stats, linesCleared, versus } = stepInfo;
+  const seen = describeSituation(board, piece, state, stats);
   return {
     game: {
       rules: RULES + (versus ? " This is a versus match: cleared lines attack the opponent." : ""),
-      board_rows_top_to_bottom: boardWithPiece(board, piece, state),
-      legend: "# is the stack, @ is the falling piece you control, . is empty. The first row is the top of the board.",
-      falling_piece: piece,
+      columns: "Columns are numbered 1 to 10 from left to right. Heights count rows from the floor; 20 is the top.",
+      falling_piece: seen.falling_piece,
+      stack: seen.stack,
       next_piece: nextPiece,
       lines_cleared_so_far: linesCleared,
     },
@@ -67,7 +69,7 @@ export function buildQuestions(actions, { extras = false } = {}) {
     move: {
       type: "choice",
       instructions: {
-        question: "Which move should the player make now with the falling piece (@) in `game.board_rows_top_to_bottom`? The options are the controls that work right now.",
+        question: "Which move should the player make now with `game.falling_piece`, given `game.stack`? The options are the controls that work right now.",
         objective: OBJECTIVE,
       },
       criteria,
@@ -86,7 +88,7 @@ export function buildQuestions(actions, { extras = false } = {}) {
     };
     questions.next_piece_fits = {
       type: "noul",
-      instructions: "Looking at `game.board_rows_top_to_bottom`, is there an obvious clean spot for `game.next_piece`, without creating holes?",
+      instructions: "Looking at `game.stack`, is there an obvious clean spot for `game.next_piece`, without creating holes?",
       criteria: {
         true: "A clean spot is easy to see.",
         false: "The next piece will be awkward to place.",

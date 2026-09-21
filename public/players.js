@@ -3,7 +3,7 @@
 // described by its outcome) and must return one move id. All go through the
 // local proxy in server.mjs except Laya, which runs on the visitor's machine.
 
-import { boardWithPiece } from "./tetris.js";
+import { describeSituation } from "./tetris.js";
 import { buildRequest, askJev, pickAction, RULES, OBJECTIVE, CONTROLS } from "./jev.js";
 
 export const JEV_PRICE = { input: 0.042 / 1e6, output: 0 };
@@ -41,19 +41,20 @@ const CHAT_SYSTEM = [
   "You are playing Tetris in real time, one move at a time, like a player at the keyboard.",
   RULES,
   ...OBJECTIVE,
-  "Each turn you get the board with the falling piece marked @ and the controls that work right now.",
+  "Each turn you get the situation in words (the falling piece, where it is, what is under it, the shape of the stack) and the controls that work right now.",
   "Decide immediately by calling the make_move tool with one of the offered move ids.",
 ].join(" ");
 
 export function buildChatPrompt(stepInfo, actions) {
-  const { board, piece, state, nextPiece, linesCleared } = stepInfo;
+  const { board, piece, state, nextPiece, stats, linesCleared } = stepInfo;
   const options = {};
   for (const a of actions) options[a.id] = CONTROLS[a.id];
+  const seen = describeSituation(board, piece, state, stats);
   return JSON.stringify(
     {
-      board_rows_top_to_bottom: boardWithPiece(board, piece, state),
-      legend: "# stack, @ falling piece, . empty; first row is the top",
-      falling_piece: piece,
+      columns: "numbered 1 to 10 from left to right; heights count rows from the floor, 20 is the top",
+      falling_piece: seen.falling_piece,
+      stack: seen.stack,
       next_piece: nextPiece,
       lines_cleared_so_far: linesCleared,
       moves: options,
@@ -235,8 +236,15 @@ export function createGeminiPlayer(apiKey, { endpoint = "api/gemini", model = GE
 
 export const LAYA_DEFAULT_ENDPOINT = "http://localhost:8765";
 
-export function describeBoardForLaya({ board, piece, state, nextPiece }) {
-  return `Tetris. Rows from the top, # stack, @ your falling ${piece}, . empty:\n${boardWithPiece(board, piece, state).join("\n")}\nNext piece: ${nextPiece}.`;
+export function describeBoardForLaya({ board, piece, state, nextPiece, stats }) {
+  const seen = describeSituation(board, piece, state, stats);
+  const f = seen.falling_piece;
+  const k = seen.stack;
+  return (
+    `Tetris. The falling piece is ${f.shape}, ${f.orientation}, in ${f.columns}, ${f.fall}; the stack under it is ${f.stack_under_it}. ` +
+    `Column heights left to right: ${k.column_heights_left_to_right.join(" ")}. The stack is ${k.overall_height} and ${k.surface} with ${k.holes === "none" ? "no holes" : k.holes}. ` +
+    `Lowest area: ${k.lowest_area}. Highest area: ${k.highest_area}. Next piece: ${nextPiece}.`
+  );
 }
 
 export function buildLayaRequest(stepInfo, actions) {

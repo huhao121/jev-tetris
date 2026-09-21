@@ -136,6 +136,17 @@ test("makeBag returns every piece once", () => {
   assert.deepEqual([...bag].sort(), [...PIECE_NAMES].sort());
 });
 
+test("describeSituation reports where the piece is and where the low and high areas are", () => {
+  const board = boardFrom(["....##....", "....##....", "....##....", "....##...."]);
+  const seen = engine.describeSituation(board, "T", { rotation: 0, x: 3, y: 2 });
+  assert.equal(seen.falling_piece.columns, "columns 4-6");
+  assert.equal(seen.falling_piece.stack_under_it, "0, 4, 4 rows high, uneven");
+  assert.equal(seen.stack.highest_area, "columns 5-6 (4 rows high), directly under the piece");
+  assert.equal(seen.stack.lowest_area, "columns 1-4 (empty), partly under the piece");
+  const right = engine.describeSituation(board, "O", { rotation: 0, x: 0, y: 0 });
+  assert.equal(right.stack.highest_area, "columns 5-6 (4 rows high), to the right of the piece, 3 columns away");
+});
+
 test("enumerateActions offers only the moves possible right now, each with its landing", () => {
   const board = emptyBoard();
   const spawn = { rotation: 0, x: SPAWN_X, y: 0 };
@@ -152,7 +163,7 @@ test("enumerateActions offers only the moves possible right now, each with its l
   assert.ok(!enumerateActions(board, "O", spawn).some((a) => a.id === "rotate"));
 });
 
-test("buildRequest is only the board, the next piece and the controls that work right now", () => {
+test("buildRequest describes the situation in words, with the controls that work right now", () => {
   const board = emptyBoard();
   const state = { rotation: 0, x: SPAWN_X, y: 0 };
   const actions = enumerateActions(board, "L", state);
@@ -161,15 +172,19 @@ test("buildRequest is only the board, the next piece and the controls that work 
     actions,
   );
   assert.equal(request.model, "jev-latest");
-  assert.equal(request.state.game.board_rows_top_to_bottom.length, HEIGHT);
-  assert.ok(request.state.game.board_rows_top_to_bottom.join("").includes("@"));
-  assert.match(request.state.game.rules, /versus/);
+  const g = request.state.game;
+  assert.match(g.rules, /versus/);
+  assert.equal(g.falling_piece.orientation, "flat with the hook up on the right");
+  assert.equal(g.falling_piece.columns, "columns 4-6");
+  assert.equal(g.falling_piece.stack_under_it, "empty, level");
+  assert.equal(g.stack.column_heights_left_to_right.length, WIDTH);
   const criteria = request.questions.move.criteria;
   assert.deepEqual(Object.keys(criteria), actions.map((a) => a.id));
   for (const text of Object.values(criteria)) assert.equal(typeof text, "string");
   assert.match(criteria.drop, /bottom/i);
-  // Nothing computed by code beyond the board itself: no heights, no landing summaries.
-  assert.deepEqual(Object.keys(request.state.game), ["rules", "board_rows_top_to_bottom", "legend", "falling_piece", "next_piece", "lines_cleared_so_far"]);
+  // Perception only: no landing summaries, nothing about what a move leads to.
+  assert.deepEqual(Object.keys(g), ["rules", "columns", "falling_piece", "stack", "next_piece", "lines_cleared_so_far"]);
+  assert.doesNotMatch(JSON.stringify(request.questions.move.criteria), /lines|holes|land/i);
   // No strategy is prescribed: the objective is the game's own.
   for (const line of request.questions.move.instructions.objective) assert.doesNotMatch(line, /hole|flat/i);
   assert.equal(request.questions.strategy, undefined);
@@ -208,8 +223,8 @@ test("Haiku prompt lists every move and the reply parser only accepts offered id
   const actions = enumerateActions(board, "S", state);
   const prompt = JSON.parse(buildChatPrompt({ board, piece: "S", nextPiece: "Z", state, stats: boardStats(board), linesCleared: 0, rowsToFall: 18 }, actions));
   assert.deepEqual(Object.keys(prompt.moves), actions.map((a) => a.id));
-  assert.ok(prompt.board_rows_top_to_bottom.join("").includes("@"));
-  assert.equal(prompt.column_heights_left_to_right, undefined);
+  assert.equal(prompt.falling_piece.orientation, "flat, top pair to the right");
+  assert.equal(prompt.stack.column_heights_left_to_right.length, WIDTH);
   assert.deepEqual(buildHaikuTool(actions).input_schema.properties.move.enum, actions.map((a) => a.id));
   assert.equal(parseHaikuChoice({ content: [{ type: "tool_use", name: "make_move", input: { move: "left" } }] }, actions).id, "left");
   assert.equal(parseHaikuChoice({ content: [{ type: "tool_use", name: "make_move", input: { move: "jump" } }] }, actions), null);
@@ -250,8 +265,8 @@ test("Laya gets the board as text and the same controls", async () => {
   const actions = enumerateActions(board, "I", state);
   const request = buildLayaRequest({ board, piece: "I", nextPiece: "T", state, stats: boardStats(board), linesCleared: 0, rowsToFall: 12 }, actions);
   assert.equal(typeof request.state, "string");
-  assert.equal(request.state.split("\n").length, HEIGHT + 2); // header, 20 rows, next piece
-  assert.match(request.state, /@/);
+  assert.match(request.state, /upright, one wide and four tall, in column 9/);
+  assert.match(request.state, /Lowest area: column 10 \(empty\), to the right of the piece, 1 column away/);
   assert.deepEqual(Object.keys(request.questions.move.criteria), actions.map((a) => a.id));
   for (const text of Object.values(request.questions.move.criteria)) assert.ok(text.split(/\s+/).length <= 20, text);
 });

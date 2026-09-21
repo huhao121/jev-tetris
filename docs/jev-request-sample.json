@@ -2,30 +2,34 @@
   "state": {
     "game": {
       "rules": "Standard Tetris. The board is 10 columns wide and 20 rows tall. You control the falling piece one move at a time, like a player at the keyboard. Gravity pulls the piece down one row at a time while you decide, and it locks shortly after it rests on the stack. A full row disappears. The game is lost when the stack reaches the top. This is a versus match: cleared lines attack the opponent.",
-      "board_rows_top_to_bottom": [
-        "..........",
-        "..........",
-        "..........",
-        "..........",
-        "..........",
-        "..........",
-        "..........",
-        "..........",
-        "....@.....",
-        "...@@@....",
-        "..........",
-        "..........",
-        "..........",
-        "..........",
-        "..........",
-        "......##..",
-        "#####.....",
-        "######....",
-        "#######.#.",
-        "########.#"
-      ],
-      "legend": "# is the stack, @ is the falling piece you control, . is empty. The first row is the top of the board.",
-      "falling_piece": "T",
+      "columns": "Columns are numbered 1 to 10 from left to right. Heights count rows from the floor; 20 is the top.",
+      "falling_piece": {
+        "shape": "T: three in a row with one sticking out of the middle",
+        "orientation": "flat with the bump on top",
+        "columns": "columns 4-6",
+        "fall": "6 rows above where it would land",
+        "stack_under_it": "4, 4, 3 rows high, uneven"
+      },
+      "stack": {
+        "column_heights_left_to_right": [
+          4,
+          4,
+          4,
+          4,
+          4,
+          3,
+          5,
+          5,
+          2,
+          1
+        ],
+        "overall_height": "low",
+        "surface": "slightly uneven",
+        "holes": "three or more holes",
+        "lowest_area": "column 10 (1 row high), to the right of the piece, 4 columns away",
+        "highest_area": "columns 7-8 (5 rows high), to the right of the piece, 1 column away",
+        "deep_wells": "none"
+      },
       "next_piece": "I",
       "lines_cleared_so_far": 12
     }
@@ -35,7 +39,7 @@
     "move": {
       "type": "choice",
       "instructions": {
-        "question": "Which move should the player make now with the falling piece (@) in `game.board_rows_top_to_bottom`? The options are the controls that work right now.",
+        "question": "Which move should the player make now with `game.falling_piece`, given `game.stack`? The options are the controls that work right now.",
         "objective": [
           "Survive as long as possible and clear as many lines as possible.",
           "In versus mode every line you clear is pushed onto the opponent's board as a garbage row, and the first player whose stack reaches the top loses.",
