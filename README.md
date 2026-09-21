@@ -27,7 +27,8 @@ Each side runs its own real-time game loop on a seeded piece sequence shared by 
   If the push shoves the stack out of the top, that player is out, and the first to top out loses.
 - **One move at a time, like a player at the keyboard.** Every request is only what a player sees:
   the board with the falling piece marked `@`, the next piece, and the controls that work right now
-  (left, right, rotate, down, drop) with a one-line hint each. The model picks one, the move is
+  (left, right, rotate, drop) with a one-line hint each; drop sends the piece straight to the
+  bottom at once, and gravity is the only other way down. The model picks one, the move is
   applied, and the next request goes out immediately. Gravity keeps pulling the piece down between
   answers, and a piece that comes to rest locks 400 ms later unless it is moved. No heights, no
   outcome summaries and no strategy come from the code: the objective is the game's own, survive

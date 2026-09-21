@@ -241,7 +241,7 @@ function barRow(name, probability, chosen = false, fillClass = "") {
   </div>`;
 }
 
-const MOVE_LABELS = { left: "← left", right: "→ right", rotate: "↻ rotate", down: "↓ down", drop: "⤓ drop" };
+const MOVE_LABELS = { left: "← left", right: "→ right", rotate: "↻ rotate", drop: "⤓ drop" };
 
 function renderDecision(decision, source) {
   const { chosen, ranked, confidence } = decision;
@@ -303,16 +303,16 @@ let heuristicPlan = null; // { piece, target, path }
 function heuristicNextMove(actions) {
   const a = game.active;
   if (!heuristicPlan || heuristicPlan.piece !== game.pieces) {
-    const placements = enumeratePlacements(game.board, game.current);
+    // Without a soft drop only straight drops are playable, so plan among those.
+    const placements = enumeratePlacements(game.board, game.current).filter((p) => p.how === "drop");
     const target = placements.slice().sort((x, y) => y.heuristic - x.heuristic)[0];
     heuristicPlan = { piece: game.pieces, target };
   }
   const t = heuristicPlan.target;
   const path = t ? findPath(game.board, game.current, a, { rotation: t.rotation, x: t.x, y: t.y }) : null;
-  let move = path && path.length ? path[0] : "drop";
-  if (move === "rotateCw") move = "rotate";
-  if (move === "rotateCcw") move = "rotate"; // the player interface only rotates one way; three turns follow if needed
-  if (path && path.length && path.every((m) => m === "down")) move = "drop";
+  // Play the sideways and rotation moves first, then drop.
+  let move = path ? path.find((m) => m !== "down") || "drop" : "drop";
+  if (move === "rotateCw" || move === "rotateCcw") move = "rotate"; // the player interface only rotates one way; three turns follow if needed
   const byId = new Map(actions.map((x) => [x.id, x]));
   const chosen = byId.get(move) || byId.get("drop") || actions[0];
   const ranked = actions.map((x) => ({ action: x, probability: x === chosen ? 1 : 0 }));

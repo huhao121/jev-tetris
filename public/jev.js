@@ -2,10 +2,11 @@
 //
 // The model plays like a person at the keyboard: every request shows the
 // board with the falling piece in it and asks for one move (left, right,
-// rotate, down or drop). The state is only what a player sees, the board and
-// the next piece; the options are only the controls, each with a one-line
-// hint of what it does. Code just leaves out moves that are blocked right
-// now. Nothing about strategy is prescribed: the objective is the game's own.
+// rotate or drop). The state is only what a player sees, the board and
+// the next piece; the options are only the controls (left, right, rotate,
+// drop), each with a one-line hint of what it does. Code just leaves out moves
+// that are blocked right now. Nothing about strategy is prescribed: the
+// objective is the game's own.
 
 import { boardWithPiece } from "./tetris.js";
 
@@ -21,8 +22,7 @@ export const CONTROLS = {
   left: "Move the piece one column to the left.",
   right: "Move the piece one column to the right.",
   rotate: "Rotate the piece clockwise.",
-  down: "Move the piece down one row. Gravity does this on its own too; use it to land sooner.",
-  drop: "Drop the piece straight down and lock it where it lands.",
+  drop: "Send the piece straight to the bottom right now and lock it there. Gravity is the only other way down.",
 };
 
 export const OBJECTIVE = [

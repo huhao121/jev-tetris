@@ -46,8 +46,7 @@
         "left": "Move the piece one column to the left.",
         "right": "Move the piece one column to the right.",
         "rotate": "Rotate the piece clockwise.",
-        "down": "Move the piece down one row. Gravity does this on its own too; use it to land sooner.",
-        "drop": "Drop the piece straight down and lock it where it lands."
+        "drop": "Send the piece straight to the bottom right now and lock it there. Gravity is the only other way down."
       }
     }
   }

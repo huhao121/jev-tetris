@@ -140,11 +140,10 @@ test("enumerateActions offers only the moves possible right now, each with its l
   const board = emptyBoard();
   const spawn = { rotation: 0, x: SPAWN_X, y: 0 };
   const ids = enumerateActions(board, "T", spawn).map((a) => a.id);
-  assert.deepEqual(ids, ["left", "right", "rotate", "down", "drop"]);
-  // Against the left wall there is no left move; resting on the floor there is no down.
+  assert.deepEqual(ids, ["left", "right", "rotate", "drop"]);
+  // Against the left wall there is no left move; there is never a soft drop.
   assert.ok(!enumerateActions(board, "T", { rotation: 0, x: 0, y: 0 }).some((a) => a.id === "left"));
-  const resting = enumerateActions(board, "T", { rotation: 0, x: 3, y: HEIGHT - 2 });
-  assert.ok(!resting.some((a) => a.id === "down"));
+  assert.ok(!ids.includes("down"));
   const drop = enumerateActions(board, "T", spawn).find((a) => a.id === "drop");
   assert.equal(drop.state.y, HEIGHT - 2);
   assert.equal(drop.rowsToFall, 0);
@@ -168,7 +167,7 @@ test("buildRequest is only the board, the next piece and the controls that work 
   const criteria = request.questions.move.criteria;
   assert.deepEqual(Object.keys(criteria), actions.map((a) => a.id));
   for (const text of Object.values(criteria)) assert.equal(typeof text, "string");
-  assert.match(criteria.down, /gravity/i);
+  assert.match(criteria.drop, /bottom/i);
   // Nothing computed by code beyond the board itself: no heights, no landing summaries.
   assert.deepEqual(Object.keys(request.state.game), ["rules", "board_rows_top_to_bottom", "legend", "falling_piece", "next_piece", "lines_cleared_so_far"]);
   // No strategy is prescribed: the objective is the game's own.

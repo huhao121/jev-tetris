@@ -311,9 +311,9 @@ export function outcomeAt(board, piece, rotation, x, y, before = boardStats(boar
 // action is described by the piece's position after it and by where the piece
 // would land if it were dropped from there, so the decision is judged by
 // outcomes without doing any spatial arithmetic. Moves that are blocked right
-// now are left out; `down` disappears once the piece rests on the stack, and
-// `drop` then locks it where it is.
-export const ACTIONS = ["left", "right", "rotate", "down", "drop"];
+// now are left out. There is no soft drop: gravity is the only way down apart
+// from `drop`, which sends the piece straight to the bottom and locks it at once.
+export const ACTIONS = ["left", "right", "rotate", "drop"];
 
 export function enumerateActions(board, piece, state, before = boardStats(board)) {
   const list = [];
@@ -427,8 +427,7 @@ const MOVE_WORDS = {
   left: "move one column to the left",
   right: "move one column to the right",
   rotate: "rotate clockwise",
-  down: "move down one row",
-  drop: "drop straight down and lock now",
+  drop: "drop straight to the bottom and lock now",
 };
 
 function describeSpan(cells) {
