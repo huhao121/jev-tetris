@@ -6,7 +6,7 @@
 // garbage for the opponent and the first to top out loses; with independent
 // boards the survivor must outlast the loser's piece count.
 
-import { createJevPlayer, createHaikuPlayer, createGeminiPlayer, HAIKU_MODEL, GEMINI_MODEL } from "./players.js";
+import { createJevPlayer, createHaikuPlayer, createGeminiPlayer, createLayaPlayer, HAIKU_MODEL, GEMINI_MODEL } from "./players.js";
 import {
   SPEEDUPS,
   PRESENT,
@@ -23,10 +23,11 @@ import {
 } from "./arena.js";
 
 const $ = (id) => document.getElementById(id);
-const STORAGE = { jev: "jev_tetris_api_key", haiku: "jev_tetris_anthropic_key", gemini: "jev_tetris_gemini_key" };
+const STORAGE = { jev: "jev_tetris_api_key", haiku: "jev_tetris_anthropic_key", gemini: "jev_tetris_gemini_key", laya: "jev_tetris_laya_endpoint" };
 const OPPONENTS = {
   haiku: { name: "Claude Haiku 4.5", short: "Haiku 4.5", badge: "haiku", label: `${HAIKU_MODEL} · Anthropic`, keyName: "Anthropic", create: (key) => createHaikuPlayer(key) },
   gemini: { name: "Gemini 3.8 Flash", short: "Gemini 3.8", badge: "gemini", label: `${GEMINI_MODEL} · Google`, keyName: "Gemini", create: (key) => createGeminiPlayer(key) },
+  laya: { name: "Laya", short: "Laya", badge: "laya", label: "laya · local, open weights", keyName: "server address", create: (endpoint) => createLayaPlayer({ endpoint }) },
 };
 
 const ui = {
@@ -35,6 +36,9 @@ const ui = {
   geminiKey: $("geminiKey"),
   haikuKeyField: $("haikuKeyField"),
   geminiKeyField: $("geminiKeyField"),
+  layaField: $("layaField"),
+  layaNote: $("layaNote"),
+  layaEndpoint: $("layaEndpoint"),
   opponent: $("opponent"),
   badgeR: $("badgeR"),
   modelR: $("modelR"),
@@ -167,7 +171,8 @@ function opponentChoice() {
 }
 
 function opponentKey() {
-  return (ui.opponent.value === "gemini" ? ui.geminiKey : ui.haikuKey).value.trim();
+  const v = ui.opponent.value;
+  return (v === "gemini" ? ui.geminiKey : v === "laya" ? ui.layaEndpoint : ui.haikuKey).value.trim();
 }
 
 function renderOpponent() {
@@ -175,8 +180,11 @@ function renderOpponent() {
   ui.badgeR.textContent = opp.name;
   ui.badgeR.className = `badge ${opp.badge}`;
   ui.modelR.textContent = opp.label;
-  ui.haikuKeyField.classList.toggle("hidden", ui.opponent.value === "gemini");
-  ui.geminiKeyField.classList.toggle("hidden", ui.opponent.value !== "gemini");
+  const v = ui.opponent.value;
+  ui.haikuKeyField.classList.toggle("hidden", v !== "haiku");
+  ui.geminiKeyField.classList.toggle("hidden", v !== "gemini");
+  ui.layaField.classList.toggle("hidden", v !== "laya");
+  ui.layaNote.classList.toggle("hidden", v !== "laya");
   document.title = `Jev vs ${opp.name}`;
 }
 
@@ -240,6 +248,7 @@ function persistKeys() {
       localStorage.setItem(STORAGE.jev, ui.jevKey.value.trim());
       localStorage.setItem(STORAGE.haiku, ui.haikuKey.value.trim());
       localStorage.setItem(STORAGE.gemini, ui.geminiKey.value.trim());
+      localStorage.setItem(STORAGE.laya, ui.layaEndpoint.value.trim());
     } else {
       for (const k of Object.values(STORAGE)) localStorage.removeItem(k);
     }
@@ -266,9 +275,11 @@ try {
   const j = localStorage.getItem(STORAGE.jev);
   const h = localStorage.getItem(STORAGE.haiku);
   const g = localStorage.getItem(STORAGE.gemini);
+  const l = localStorage.getItem(STORAGE.laya);
   if (j) ui.jevKey.value = j;
   if (h) ui.haikuKey.value = h;
   if (g) ui.geminiKey.value = g;
+  if (l) ui.layaEndpoint.value = l;
   if (j || h || g) ui.remember.checked = true;
 } catch {
   /* storage unavailable */

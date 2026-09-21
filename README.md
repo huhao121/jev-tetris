@@ -1,11 +1,13 @@
 # Jev vs the LLMs: real-time Tetris
 
 Two AI models play Tetris against each other in real time. [Jev](https://docs.typesafe.ai), TypeSafe's
-System One model, faces Claude Haiku 4.5 or Gemini 3.8 Flash. Same piece sequence, same options, same
+System One model, faces Claude Haiku 4.5, Gemini 3.8 Flash, or [Laya](https://github.com/NandhaKishorM/laya),
+an open-weight typed-decision model running on your own machine. Same piece sequence, same options, same
 clock. Every line you clear lands on your opponent's board as a garbage row. Whoever tops out first loses.
 
 **Play it live:** [jev-tetris.vercel.app](https://jev-tetris.vercel.app)
-(bring a TypeSafe key plus an Anthropic or Gemini key; the proxy stores nothing).
+(bring a TypeSafe key plus an Anthropic or Gemini key; the proxy stores nothing. Laya needs no key,
+just its local server, see [Laya, the open-weight opponent](#laya-the-open-weight-opponent)).
 
 ![Jev vs Claude Haiku, versus mode](docs/battle.png)
 
@@ -27,8 +29,10 @@ Each side runs its own real-time game loop on a seeded piece sequence shared by 
   words (lines cleared, holes created, height, surface, wells). Jev answers with a Choice question
   over those options; the opponent (Claude Haiku 4.5 via the Anthropic API, or Gemini 3.8 Flash via
   the Gemini API) answers through a forced `place_piece` function call whose `option_id` is an enum
-  of the same options. Both are constrained to legal moves; latency is part of the game. Pick the
-  opponent in the setup card or with `?opponent=gemini`.
+  of the same options. Laya, whose context is only 512 tokens, gets a one-paragraph description of
+  the board and the six best placements pre-ranked by the code's heuristic, and picks one with the
+  same Choice question shape. All are constrained to legal moves; latency is part of the game. Pick
+  the opponent in the setup card or with `?opponent=gemini` / `?opponent=laya`.
 - **Stats per model.** Lines, pieces, garbage sent and received, average and min/max latency, missed
   deadlines, invalid answers, model calls, tokens in and out, cost and cost per move, live under each
   board and in a side-by-side table when the match ends.
@@ -41,6 +45,24 @@ for a stripped-down layout meant for recordings.
 ### Results so far
 
 Seed 42, one run each. Jev is not fully deterministic between runs, so treat these as samples.
+
+**Jev vs Laya**
+
+![Jev vs Laya, versus mode](docs/battle-laya.png)
+
+| Mode | Result | Jev | Laya (`convaiinnovations/laya`, PyTorch on a 4-core CPU) |
+| --- | --- | --- | --- |
+| Versus, gravity 150 ms/row rising 15% every 20 s | Jev wins at 0:14: Laya topped out first | 7 lines, 27 pieces, sent 7 garbage, 232 ms/move, 0 missed, $0.0035 | 0 lines, 19 pieces, 614 ms/move, 2 missed, $0 |
+| Lockstep (no gravity), Laya alone | topped out after 53 pieces | | 5 lines, picked the heuristic's top option 16 times out of 53 |
+
+Laya is a 421M-parameter ModernBERT encoder trained on typed decisions in other domains (email
+triage, routing), not Tetris, and it shows: its
+probabilities over the six candidates are nearly flat (entropy confidence 0.01 to 0.1), it prefers
+whichever options are listed first, and it does not favor the "clears four lines" option even when it
+is the only one that clears anything. Given unlimited time it lasts about 50 pieces; in real time,
+Jev's garbage plus a 0.4 to 0.6 s think time on this CPU end it in seconds. On Apple Silicon with
+[laya-mlx](https://github.com/mizorewww/laya-mlx) the same model answers in tens of milliseconds, which
+removes the latency handicap but not the decision quality.
 
 **Jev vs Gemini 3.8 Flash**
 
@@ -69,6 +91,29 @@ wall-clock terms. In versus mode that gap turns into garbage: Haiku's board fill
 than it can clear from above. Missed deadlines bite both sides as the stack rises, because near the
 top a piece has only a few rows to fall. Per move, Jev costs about 20x less: its input tokens are
 cheap and its output is free, while Haiku bills both directions.
+
+## Laya, the open-weight opponent
+
+[Laya](https://github.com/NandhaKishorM/laya) exposes the same `system_one(state, questions)` call as
+TypeSafe's API, so it drops in as a battle opponent, running on your machine rather than behind a key.
+`tools/laya_server.py` wraps it in a small HTTP server with the TypeSafe request shape and open CORS:
+
+```sh
+pip install laya-mlx        # Apple Silicon (MLX port of the open weights), or
+pip install laya            # PyTorch reference build, any platform (CPU works, ~0.35 s per move on 4 cores)
+python tools/laya_server.py # loads the checkpoint, listens on http://localhost:8765
+```
+
+Then open the battle page, choose **Laya (local, open weights)** as the opponent and start. The page
+calls `http://localhost:8765` straight from the browser, so it works from the hosted copy too (browsers
+allow https pages to reach localhost). `--model` picks another checkpoint, `--runtime torch|mlx`
+forces a runtime, `--verbose` logs every move with its inference time.
+
+What Laya sees is built by `buildLayaRequest` in `public/players.js`: a text summary of the board
+("The stack is low and slightly uneven with one hole. Column 10 is a deep well. The falling piece is
+an I bar. Next piece: T.") and six options such as `column 10 vertical: clears four lines, no holes,
+stack gets lower`, ordered best-first by the heuristic. Laya returns a probability per option and the
+page plays its top pick.
 
 ## Play against Jev yourself
 
@@ -152,6 +197,8 @@ Optional environment variables:
 | `ANTHROPIC_API_BASE` | Override the Anthropic API base URL. |
 | `GEMINI_API_BASE` | Override the Gemini API base URL. |
 
+Laya needs none of these: the page talks to `tools/laya_server.py` directly.
+
 Behind a corporate proxy, run with `NODE_USE_ENV_PROXY=1` so Node's `fetch` honours `HTTPS_PROXY`.
 
 ## Tests
@@ -176,7 +223,8 @@ vercel.json           Vercel config (static public/, functions in api/)
 public/index.html     battle page (+ battle.css, battle.js)
 public/play.html      human vs Jev (+ play.js)
 public/arena.js       shared two-board machinery: sides, drawing, stats, garbage, gravity ramp, model loop
-public/players.js     Jev, Claude Haiku and Gemini players for the battle
+public/players.js     Jev, Claude Haiku, Gemini and Laya players for the battle
+tools/laya_server.py  local HTTP wrapper around Laya (laya-mlx or laya) with the TypeSafe request shape
 public/solo.html      single-player page (+ style.css, app.js)
 public/battle.html    redirect to the front page for old links
 public/tetris.js      pure engine: pieces, placements, outcome descriptions, garbage, seeded RNG
@@ -187,7 +235,7 @@ test/tetris.test.mjs  node --test suite
 ## Tuning
 
 Everything Jev sees is in `buildState` and `buildQuestions` in [`public/jev.js`](public/jev.js);
-the Haiku and Gemini prompts and tools are in [`public/players.js`](public/players.js). The `priorities`
+the Haiku and Gemini prompts and tools, and Laya's board summary, are in [`public/players.js`](public/players.js). The `priorities`
 list inside Jev's `placement` question is where to change how it weighs line clears against holes
 and height. The word buckets for each feature live in the `describe*` helpers in
 [`public/tetris.js`](public/tetris.js). Keep the numbers in code and hand the models the comparison.

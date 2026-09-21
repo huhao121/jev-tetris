@@ -236,3 +236,112 @@ export function createGeminiPlayer(apiKey, { endpoint = "api/gemini", model = GE
     },
   };
 }
+
+// ---- Laya (local) ---------------------------------------------------------------------
+// Laya is an open-weight typed-decision model (Convai Innovations; MLX port by
+// mizorewww as laya-mlx). It runs on the visitor's machine behind
+// tools/laya_server.py and answers the same TypeSafe-shaped request as Jev.
+// Its context is small (512 tokens, with about 190 for the question and its
+// options, at most 48 per option), so instead of Jev's Choice over every
+// placement it gets a one-paragraph description of the board plus the top
+// candidates pre-ranked by the classic heuristic in code, each described in a
+// dozen words with the location first.
+
+export const LAYA_DEFAULT_ENDPOINT = "http://localhost:8765";
+export const LAYA_CANDIDATES = 6;
+
+const PIECE_WORDS = { I: "an I bar", O: "an O square", T: "a T", S: "an S", Z: "a Z", J: "a J", L: "an L" };
+
+export function describeBoardForLaya({ piece, nextPiece, stats }) {
+  const holes = stats.holes === 0 ? "no holes" : `${describeHoles(stats.holes)}`.replace("three or more holes", "several holes");
+  const wells = stats.wells.length === 1
+    ? ` Column ${stats.wells[0].column + 1} is a deep well.`
+    : stats.wells.length > 1
+      ? ` There are ${stats.wells.length} deep wells.`
+      : "";
+  return (
+    `Tetris. The stack is ${describeHeight(stats.maxHeight)} and ${describeSurface(stats.bumpiness)} with ${holes}.` +
+    `${wells} The falling piece is ${PIECE_WORDS[piece] || piece}. Next piece: ${nextPiece}.`
+  );
+}
+
+export function describePlacementForLaya(p) {
+  const d = describePlacement(p);
+  const xs = p.cells.map((c) => c[0]);
+  const width = Math.max(...xs) - Math.min(...xs) + 1;
+  const where = width === 1 ? `${d.where} vertical` : width === 4 ? `${d.where} flat` : d.where;
+  const parts = [p.linesCleared ? `clears ${d.lines_cleared.replace(" (a Tetris)", "")}` : "no lines cleared"];
+  parts.push(p.holesCreated ? `creates ${d.holes_created}` : "no holes");
+  if (p.heightDelta >= 2) parts.push("stack grows by several rows");
+  else if (p.heightDelta === 1) parts.push("stack grows by one row");
+  else if (p.linesCleared > 0 && p.heightDelta < 0) parts.push("stack gets lower");
+  else parts.push(`surface ${d.surface_after}`);
+  return `${where}: ${parts.join(", ")}`;
+}
+
+export function buildLayaRequest(gameInfo, placements, limit = LAYA_CANDIDATES) {
+  const candidates = placements.slice().sort((a, b) => b.heuristic - a.heuristic).slice(0, limit);
+  const criteria = {};
+  for (const p of candidates) criteria[p.id] = describePlacementForLaya(p);
+  return {
+    candidates,
+    request: {
+      state: describeBoardForLaya(gameInfo),
+      model: "laya",
+      questions: {
+        placement: {
+          type: "choice",
+          instructions: "Pick the best placement: clear lines, avoid holes, keep the stack low and flat.",
+          criteria,
+        },
+      },
+    },
+  };
+}
+
+export function createLayaPlayer({ endpoint = LAYA_DEFAULT_ENDPOINT, candidates = LAYA_CANDIDATES } = {}) {
+  const base = endpoint.replace(/\/+$/, "");
+  return {
+    name: "Laya",
+    short: "Laya",
+    model: "laya (local)",
+    endpoint: base,
+    async decide(gameInfo, placements, signal) {
+      const { candidates: shortlist, request } = buildLayaRequest(gameInfo, placements, candidates);
+      if (shortlist.length === 1) {
+        // Laya's choice head needs at least two options.
+        return { chosen: shortlist[0], latencyMs: 0, inputTokens: 0, outputTokens: 0, cost: 0, note: "only one option" };
+      }
+      const started = performance.now();
+      const res = await fetch(`${base}/v1/systemone`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+        signal,
+      });
+      const latencyMs = performance.now() - started;
+      const text = await res.text();
+      let json = null;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = null;
+      }
+      if (!res.ok) {
+        const err = new Error(json?.detail?.message || text || `HTTP ${res.status}`);
+        err.status = res.status;
+        throw err;
+      }
+      const { chosen, confidence } = pickPlacement(json, shortlist);
+      const usage = json.usage || {};
+      return {
+        chosen,
+        latencyMs,
+        inputTokens: usage.input_tokens || 0,
+        outputTokens: usage.output_tokens || 0,
+        cost: 0, // local inference
+        note: `confidence ${confidence.toFixed(2)}${json.inference_ms ? `, ${Math.round(json.inference_ms)} ms on the model` : ""}`,
+      };
+    },
+  };
+}

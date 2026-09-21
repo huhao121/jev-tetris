@@ -48,10 +48,14 @@
           <select id="opponent">
             <option value="haiku" selected>Claude Haiku 4.5 (Anthropic)</option>
             <option value="gemini">Gemini 3.8 Flash (Google)</option>
+            <option value="laya">Laya (local, open weights)</option>
           </select>
         </label>
         <label class="field" id="haikuKeyField">Anthropic key <input id="haikuKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" /></label>
         <label class="field hidden" id="geminiKeyField">Gemini key <input id="geminiKey" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false" /></label>
+        <label class="field hidden" id="layaField">Laya server <input id="layaEndpoint" type="text" value="http://localhost:8765" autocomplete="off" spellcheck="false" /></label>
+        <p class="hint hidden" id="layaNote">Laya runs on your own machine: <code>pip install laya-mlx</code> (Apple Silicon) or <code>pip install laya</code>, then
+          <code>python tools/laya_server.py</code> from the repo. No key, no cost.</p>
         <label class="remember"><input id="remember" type="checkbox" /> Remember keys in this browser</label>
         <p class="hint">Keys go from this page to the proxy in <code>server.mjs</code>, which forwards each to its API and stores nothing.</p>
       </div>

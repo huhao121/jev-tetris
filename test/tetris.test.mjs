@@ -194,3 +194,24 @@ test("Gemini tool schema enumerates the options and the parser reads the functio
   assert.equal(parseGeminiChoice(resp([{ functionCall: { name: "place_piece", args: { option_id: "p999" } } }]), placements), null);
   assert.equal(parseGeminiChoice({}, placements), null);
 });
+
+test("Laya gets a short text board and the top candidates described location-first", async () => {
+  const { buildLayaRequest, LAYA_CANDIDATES } = await import("../public/players.js");
+  const board = boardFrom(["#########.", "#########.", "#########.", "#########."]);
+  const placements = enumeratePlacements(board, "I");
+  const { candidates, request } = buildLayaRequest(
+    { board, piece: "I", nextPiece: "T", stats: placements[0].before, linesCleared: 0 },
+    placements,
+  );
+  assert.equal(candidates.length, LAYA_CANDIDATES);
+  assert.equal(typeof request.state, "string");
+  assert.match(request.state, /Column 10 is a deep well/);
+  assert.match(request.state, /falling piece is an I bar/);
+  const ids = Object.keys(request.questions.placement.criteria);
+  assert.deepEqual(ids, candidates.map((p) => p.id));
+  // The four-line clear is the best heuristic option and is described first.
+  assert.equal(request.questions.placement.criteria[ids[0]], "column 10 vertical: clears four lines, no holes, stack gets lower");
+  for (const text of Object.values(request.questions.placement.criteria)) {
+    assert.ok(text.split(/\s+/).length <= 14, text);
+  }
+});
