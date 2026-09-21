@@ -25,21 +25,14 @@ Each side runs its own real-time game loop on a seeded piece sequence shared by 
 - **Versus.** Every cleared line becomes a garbage row (full except one gap) queued for the opponent
   and inserted under their stack when their current piece locks. A red counter shows incoming rows.
   If the push shoves the stack out of the top, that player is out, and the first to top out loses.
-- **One move at a time, like a player at the keyboard.** Every request shows the board with the
-  falling piece in it and offers the moves possible right now: left, right, rotate, down, drop.
-  Code describes each move by where the piece would be afterwards and what the board would look
-  like if it were dropped from there (lines cleared, holes, height, surface, wells); the model
-  picks one, the move is applied, and the next request goes out immediately. Gravity keeps
-  pulling the piece down between answers, and a piece that comes to rest locks 400 ms later
-  unless it is moved. Nothing about strategy is prescribed: the objective is the game's own,
-  survive and clear lines. `node tools/jev-request-sample.mjs` prints the exact request Jev sees
-  for a sample state; [`docs/jev-request-sample.json`](docs/jev-request-sample.json) is its output. Jev answers with a Choice question
-  over those options; the opponent (Claude Haiku 4.5 via the Anthropic API, or Gemini 3.8 Flash via
-  the Gemini API) answers through a forced `make_move` function call whose `move` is an enum of the
-  same moves. Laya, whose context is only 512 tokens, gets a one-paragraph description of the board
-  and the same moves in a dozen words each. All are constrained to possible moves; latency is part
-  of the game, since a slow answer means fewer moves per piece. Pick the opponent in the setup
-  card or with `?opponent=gemini` / `?opponent=laya`.
+- **One move at a time, like a player at the keyboard.** Every request is only what a player sees:
+  the board with the falling piece marked `@`, the next piece, and the controls that work right now
+  (left, right, rotate, down, drop) with a one-line hint each. The model picks one, the move is
+  applied, and the next request goes out immediately. Gravity keeps pulling the piece down between
+  answers, and a piece that comes to rest locks 400 ms later unless it is moved. No heights, no
+  outcome summaries and no strategy come from the code: the objective is the game's own, survive
+  and clear lines. `node tools/jev-request-sample.mjs` prints the exact request Jev sees for a
+  sample state; [`docs/jev-request-sample.json`](docs/jev-request-sample.json) is its output.
 - **Stats per model.** Lines, pieces, garbage sent and received, average and min/max latency, missed
   deadlines, invalid answers, model calls, tokens in and out, cost and cost per move, live under each
   board and in a side-by-side table when the match ends.

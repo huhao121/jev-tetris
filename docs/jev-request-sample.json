@@ -1,7 +1,7 @@
 {
   "state": {
     "game": {
-      "rules": "Standard Tetris. The board is 10 columns wide and 20 rows tall. You control the falling piece one move at a time, like a player at the keyboard: move left, move right, rotate, move down, or drop. Gravity pulls the piece down one row at a time while you decide, and it locks shortly after it rests on the stack. A full row disappears. The game is lost when the stack reaches the top. This is a versus match: cleared lines attack the opponent.",
+      "rules": "Standard Tetris. The board is 10 columns wide and 20 rows tall. You control the falling piece one move at a time, like a player at the keyboard. Gravity pulls the piece down one row at a time while you decide, and it locks shortly after it rests on the stack. A full row disappears. The game is lost when the stack reaches the top. This is a versus match: cleared lines attack the opponent.",
       "board_rows_top_to_bottom": [
         "..........",
         "..........",
@@ -25,27 +25,7 @@
         "########.#"
       ],
       "legend": "# is the stack, @ is the falling piece you control, . is empty. The first row is the top of the board.",
-      "column_heights_left_to_right": [
-        4,
-        4,
-        4,
-        4,
-        4,
-        3,
-        5,
-        5,
-        2,
-        1
-      ],
-      "stack_height": "low",
-      "holes_in_stack": "three or more holes",
-      "surface": "slightly uneven",
-      "falling_piece": {
-        "shape": "T",
-        "position": "columns 4-6",
-        "fall": "6 rows above where it would land",
-        "rotation": "1 of 4"
-      },
+      "falling_piece": "T",
       "next_piece": "I",
       "lines_cleared_so_far": 12
     }
@@ -55,7 +35,7 @@
     "move": {
       "type": "choice",
       "instructions": {
-        "question": "Which move should the player make now with `game.falling_piece`? Each option says where the piece would be after the move and what the board would look like if it were dropped from there.",
+        "question": "Which move should the player make now with the falling piece (@) in `game.board_rows_top_to_bottom`? The options are the controls that work right now.",
         "objective": [
           "Survive as long as possible and clear as many lines as possible.",
           "In versus mode every line you clear is pushed onto the opponent's board as a garbage row, and the first player whose stack reaches the top loses.",
@@ -63,76 +43,11 @@
         ]
       },
       "criteria": {
-        "left": {
-          "move": "move one column to the left",
-          "piece_after": "columns 3-5, 6 rows above where it would land",
-          "landing": {
-            "where": "columns 3-5",
-            "lines_cleared": "none",
-            "holes_created": "none",
-            "holes_uncovered": "none",
-            "stack_height_after": "low",
-            "height_change": "stack grows by one row",
-            "surface_after": "bumpy",
-            "wells_after": "no deep wells"
-          }
-        },
-        "right": {
-          "move": "move one column to the right",
-          "piece_after": "columns 5-7, 5 rows above where it would land",
-          "landing": {
-            "where": "columns 5-7",
-            "lines_cleared": "none",
-            "holes_created": "three or more holes",
-            "holes_uncovered": "none",
-            "stack_height_after": "low",
-            "height_change": "stack grows by several rows",
-            "surface_after": "slightly uneven",
-            "wells_after": "no deep wells"
-          }
-        },
-        "rotate": {
-          "move": "rotate clockwise",
-          "piece_after": "columns 4-5, 5 rows above where it would land",
-          "landing": {
-            "where": "columns 4-5",
-            "lines_cleared": "none",
-            "holes_created": "one hole",
-            "holes_uncovered": "none",
-            "stack_height_after": "low",
-            "height_change": "stack grows by several rows",
-            "surface_after": "bumpy",
-            "wells_after": "no deep wells"
-          }
-        },
-        "down": {
-          "move": "move down one row",
-          "piece_after": "columns 4-6, 5 rows above where it would land",
-          "landing": {
-            "where": "columns 4-6",
-            "lines_cleared": "none",
-            "holes_created": "one hole",
-            "holes_uncovered": "none",
-            "stack_height_after": "low",
-            "height_change": "stack grows by one row",
-            "surface_after": "slightly uneven",
-            "wells_after": "no deep wells"
-          }
-        },
-        "drop": {
-          "move": "drop straight down and lock now",
-          "piece_after": "locked at columns 4-6",
-          "landing": {
-            "where": "columns 4-6",
-            "lines_cleared": "none",
-            "holes_created": "one hole",
-            "holes_uncovered": "none",
-            "stack_height_after": "low",
-            "height_change": "stack grows by one row",
-            "surface_after": "slightly uneven",
-            "wells_after": "no deep wells"
-          }
-        }
+        "left": "Move the piece one column to the left.",
+        "right": "Move the piece one column to the right.",
+        "rotate": "Rotate the piece clockwise.",
+        "down": "Move the piece down one row. Gravity does this on its own too; use it to land sooner.",
+        "drop": "Drop the piece straight down and lock it where it lands."
       }
     }
   }

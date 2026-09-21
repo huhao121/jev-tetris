@@ -3,8 +3,8 @@
 // described by its outcome) and must return one move id. All go through the
 // local proxy in server.mjs except Laya, which runs on the visitor's machine.
 
-import { describeAction, boardWithPiece, describeHeight, describeHoles, describeSurface, describeFall, PIECES } from "./tetris.js";
-import { buildRequest, askJev, pickAction, RULES, OBJECTIVE } from "./jev.js";
+import { boardWithPiece } from "./tetris.js";
+import { buildRequest, askJev, pickAction, RULES, OBJECTIVE, CONTROLS } from "./jev.js";
 
 export const JEV_PRICE = { input: 0.042 / 1e6, output: 0 };
 export const HAIKU_MODEL = "claude-haiku-4-5";
@@ -41,23 +41,19 @@ const CHAT_SYSTEM = [
   "You are playing Tetris in real time, one move at a time, like a player at the keyboard.",
   RULES,
   ...OBJECTIVE,
-  "Each turn you get the board with the falling piece marked @ and the moves possible right now, each described by where the piece would be afterwards and what the board would look like if it were dropped from there.",
+  "Each turn you get the board with the falling piece marked @ and the controls that work right now.",
   "Decide immediately by calling the make_move tool with one of the offered move ids.",
 ].join(" ");
 
 export function buildChatPrompt(stepInfo, actions) {
-  const { board, piece, state, nextPiece, stats, linesCleared, rowsToFall } = stepInfo;
+  const { board, piece, state, nextPiece, linesCleared } = stepInfo;
   const options = {};
-  for (const a of actions) options[a.id] = describeAction(a);
+  for (const a of actions) options[a.id] = CONTROLS[a.id];
   return JSON.stringify(
     {
       board_rows_top_to_bottom: boardWithPiece(board, piece, state),
-      legend: "# stack, @ falling piece, . empty",
-      column_heights_left_to_right: stats.heights,
-      stack_height: describeHeight(stats.maxHeight),
-      holes_in_stack: describeHoles(stats.holes),
-      surface: describeSurface(stats.bumpiness),
-      falling_piece: { shape: piece, fall: describeFall(rowsToFall), rotation: `${state.rotation + 1} of ${PIECES[piece].length}` },
+      legend: "# stack, @ falling piece, . empty; first row is the top",
+      falling_piece: piece,
       next_piece: nextPiece,
       lines_cleared_so_far: linesCleared,
       moves: options,
@@ -234,40 +230,18 @@ export function createGeminiPlayer(apiKey, { endpoint = "api/gemini", model = GE
 // Laya is an open-weight typed-decision model (Convai Innovations; MLX port by
 // mizorewww as laya-mlx). It runs on the visitor's machine behind
 // tools/laya_server.py and answers the same TypeSafe-shaped request as Jev.
-// Its context is small (512 tokens, about 190 for the question and its
-// options, at most 48 per option), so it gets a one-paragraph description of
-// the board and the same five moves described in a dozen words each.
+// Its context is small (512 tokens), which the board plus the five controls
+// fits in comfortably.
 
 export const LAYA_DEFAULT_ENDPOINT = "http://localhost:8765";
 
-const PIECE_WORDS = { I: "an I bar", O: "an O square", T: "a T", S: "an S", Z: "a Z", J: "a J", L: "an L" };
-
-export function describeBoardForLaya({ piece, nextPiece, stats, rowsToFall, state }) {
-  const holes = stats.holes === 0 ? "no holes" : `${describeHoles(stats.holes)}`.replace("three or more holes", "several holes");
-  const xs = PIECES[piece][state.rotation].cells.map(([cx]) => state.x + cx + 1);
-  const span = Math.min(...xs) === Math.max(...xs) ? `column ${xs[0]}` : `columns ${Math.min(...xs)}-${Math.max(...xs)}`;
-  return (
-    `Tetris. The stack is ${describeHeight(stats.maxHeight)} and ${describeSurface(stats.bumpiness)} with ${holes}. ` +
-    `The falling piece is ${PIECE_WORDS[piece] || piece} in ${span}, ${describeFall(rowsToFall)}. Next piece: ${nextPiece}.`
-  );
-}
-
-export function describeActionForLaya(a) {
-  const d = describeAction(a);
-  const l = a.landing;
-  const parts = [l.linesCleared ? `clears ${d.landing.lines_cleared.replace(" (a Tetris)", "")}` : "no lines cleared"];
-  parts.push(l.holesCreated ? `creates ${d.landing.holes_created}` : "no holes");
-  if (l.heightDelta >= 2) parts.push("stack grows by several rows");
-  else if (l.heightDelta === 1) parts.push("stack grows by one row");
-  else if (l.linesCleared > 0 && l.heightDelta < 0) parts.push("stack gets lower");
-  else parts.push(`surface ${d.landing.surface_after}`);
-  const verb = a.action === "drop" ? "drop now" : a.action === "rotate" ? "rotate" : `move ${a.action}`;
-  return `${verb}, lands ${d.landing.where}: ${parts.join(", ")}`;
+export function describeBoardForLaya({ board, piece, state, nextPiece }) {
+  return `Tetris. Rows from the top, # stack, @ your falling ${piece}, . empty:\n${boardWithPiece(board, piece, state).join("\n")}\nNext piece: ${nextPiece}.`;
 }
 
 export function buildLayaRequest(stepInfo, actions) {
   const criteria = {};
-  for (const a of actions) criteria[a.id] = describeActionForLaya(a);
+  for (const a of actions) criteria[a.id] = CONTROLS[a.id];
   return {
     state: describeBoardForLaya(stepInfo),
     model: "laya",

@@ -2,19 +2,28 @@
 //
 // The model plays like a person at the keyboard: every request shows the
 // board with the falling piece in it and asks for one move (left, right,
-// rotate, down or drop). Code enumerates which moves are possible right now
-// and describes where each would leave the piece and where the piece would
-// land if dropped from there; Jev picks one with a Choice question. Nothing
-// about strategy is prescribed: the objective is the game's own.
+// rotate, down or drop). The state is only what a player sees, the board and
+// the next piece; the options are only the controls, each with a one-line
+// hint of what it does. Code just leaves out moves that are blocked right
+// now. Nothing about strategy is prescribed: the objective is the game's own.
 
-import { boardWithPiece, describeAction, describeHeight, describeSurface, describeHoles, describeFall, PIECES } from "./tetris.js";
+import { boardWithPiece } from "./tetris.js";
 
 export const MODEL = "jev-latest";
 
 export const RULES =
-  "Standard Tetris. The board is 10 columns wide and 20 rows tall. You control the falling piece one move at a time, like a player at the keyboard: " +
-  "move left, move right, rotate, move down, or drop. Gravity pulls the piece down one row at a time while you decide, and it locks shortly after it rests on the stack. " +
+  "Standard Tetris. The board is 10 columns wide and 20 rows tall. You control the falling piece one move at a time, like a player at the keyboard. " +
+  "Gravity pulls the piece down one row at a time while you decide, and it locks shortly after it rests on the stack. " +
   "A full row disappears. The game is lost when the stack reaches the top.";
+
+// The controls, as offered to the model. Blocked ones are left out per request.
+export const CONTROLS = {
+  left: "Move the piece one column to the left.",
+  right: "Move the piece one column to the right.",
+  rotate: "Rotate the piece clockwise.",
+  down: "Move the piece down one row. Gravity does this on its own too; use it to land sooner.",
+  drop: "Drop the piece straight down and lock it where it lands.",
+};
 
 export const OBJECTIVE = [
   "Survive as long as possible and clear as many lines as possible.",
@@ -36,31 +45,15 @@ export const HEALTH_LEVELS = [
   "Critical: stack near the top, the game may be lost within a few pieces",
 ];
 
-function describePieceSpan(piece, state) {
-  const xs = PIECES[piece][state.rotation].cells.map(([cx]) => state.x + cx + 1);
-  const left = Math.min(...xs);
-  const right = Math.max(...xs);
-  return left === right ? `column ${left}` : `columns ${left}-${right}`;
-}
-
-// stepInfo: { board, piece, state: { rotation, x, y }, nextPiece, stats, linesCleared, versus, rowsToFall }
+// stepInfo: { board, piece, state: { rotation, x, y }, nextPiece, linesCleared, versus }
 export function buildState(stepInfo) {
-  const { board, piece, state, nextPiece, stats, linesCleared, versus, rowsToFall } = stepInfo;
+  const { board, piece, state, nextPiece, linesCleared, versus } = stepInfo;
   return {
     game: {
       rules: RULES + (versus ? " This is a versus match: cleared lines attack the opponent." : ""),
       board_rows_top_to_bottom: boardWithPiece(board, piece, state),
       legend: "# is the stack, @ is the falling piece you control, . is empty. The first row is the top of the board.",
-      column_heights_left_to_right: stats.heights,
-      stack_height: describeHeight(stats.maxHeight),
-      holes_in_stack: describeHoles(stats.holes),
-      surface: describeSurface(stats.bumpiness),
-      falling_piece: {
-        shape: piece,
-        position: describePieceSpan(piece, state),
-        fall: describeFall(rowsToFall),
-        rotation: `${state.rotation + 1} of ${PIECES[piece].length}`,
-      },
+      falling_piece: piece,
       next_piece: nextPiece,
       lines_cleared_so_far: linesCleared,
     },
@@ -69,12 +62,12 @@ export function buildState(stepInfo) {
 
 export function buildQuestions(actions, { extras = false } = {}) {
   const criteria = {};
-  for (const a of actions) criteria[a.id] = describeAction(a);
+  for (const a of actions) criteria[a.id] = CONTROLS[a.id];
   const questions = {
     move: {
       type: "choice",
       instructions: {
-        question: "Which move should the player make now with `game.falling_piece`? Each option says where the piece would be after the move and what the board would look like if it were dropped from there.",
+        question: "Which move should the player make now with the falling piece (@) in `game.board_rows_top_to_bottom`? The options are the controls that work right now.",
         objective: OBJECTIVE,
       },
       criteria,
@@ -93,7 +86,7 @@ export function buildQuestions(actions, { extras = false } = {}) {
     };
     questions.next_piece_fits = {
       type: "noul",
-      instructions: "Given `game.column_heights_left_to_right` and `game.surface`, is there an obvious clean spot for `game.next_piece`, without creating holes?",
+      instructions: "Looking at `game.board_rows_top_to_bottom`, is there an obvious clean spot for `game.next_piece`, without creating holes?",
       criteria: {
         true: "A clean spot is easy to see.",
         false: "The next piece will be awkward to place.",

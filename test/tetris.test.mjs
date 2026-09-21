@@ -153,7 +153,7 @@ test("enumerateActions offers only the moves possible right now, each with its l
   assert.ok(!enumerateActions(board, "O", spawn).some((a) => a.id === "rotate"));
 });
 
-test("buildRequest shows the falling piece and describes every offered move the same way", () => {
+test("buildRequest is only the board, the next piece and the controls that work right now", () => {
   const board = emptyBoard();
   const state = { rotation: 0, x: SPAWN_X, y: 0 };
   const actions = enumerateActions(board, "L", state);
@@ -167,14 +167,14 @@ test("buildRequest shows the falling piece and describes every offered move the 
   assert.match(request.state.game.rules, /versus/);
   const criteria = request.questions.move.criteria;
   assert.deepEqual(Object.keys(criteria), actions.map((a) => a.id));
-  const fields = Object.keys(criteria.left.landing);
-  for (const id of Object.keys(criteria)) assert.deepEqual(Object.keys(criteria[id].landing), fields);
-  assert.match(criteria.drop.piece_after, /^locked at/);
-  assert.match(criteria.left.piece_after, /rows above where it would land/);
+  for (const text of Object.values(criteria)) assert.equal(typeof text, "string");
+  assert.match(criteria.down, /gravity/i);
+  // Nothing computed by code beyond the board itself: no heights, no landing summaries.
+  assert.deepEqual(Object.keys(request.state.game), ["rules", "board_rows_top_to_bottom", "legend", "falling_piece", "next_piece", "lines_cleared_so_far"]);
   // No strategy is prescribed: the objective is the game's own.
   for (const line of request.questions.move.instructions.objective) assert.doesNotMatch(line, /hole|flat/i);
   assert.equal(request.questions.strategy, undefined);
-  assert.ok(JSON.stringify(request).length < 6_000);
+  assert.ok(JSON.stringify(request).length < 2_500);
 });
 
 test("pickAction maps the answer back and ranks alternatives", () => {
@@ -210,6 +210,7 @@ test("Haiku prompt lists every move and the reply parser only accepts offered id
   const prompt = JSON.parse(buildChatPrompt({ board, piece: "S", nextPiece: "Z", state, stats: boardStats(board), linesCleared: 0, rowsToFall: 18 }, actions));
   assert.deepEqual(Object.keys(prompt.moves), actions.map((a) => a.id));
   assert.ok(prompt.board_rows_top_to_bottom.join("").includes("@"));
+  assert.equal(prompt.column_heights_left_to_right, undefined);
   assert.deepEqual(buildHaikuTool(actions).input_schema.properties.move.enum, actions.map((a) => a.id));
   assert.equal(parseHaikuChoice({ content: [{ type: "tool_use", name: "make_move", input: { move: "left" } }] }, actions).id, "left");
   assert.equal(parseHaikuChoice({ content: [{ type: "tool_use", name: "make_move", input: { move: "jump" } }] }, actions), null);
@@ -243,17 +244,16 @@ test("Gemini tool schema enumerates the moves and the parser reads the function 
   assert.equal(parseGeminiChoice({ candidates: [{ content: { parts: [{ text: "hmm" }] } }] }, actions), null);
 });
 
-test("Laya gets a short text board and the same moves in a dozen words each", async () => {
+test("Laya gets the board as text and the same controls", async () => {
   const { buildLayaRequest } = await import("../public/players.js");
   const board = boardFrom(["#########.", "#########.", "#########.", "#########."]);
   const state = { rotation: 1, x: 8, y: 0 };
   const actions = enumerateActions(board, "I", state);
   const request = buildLayaRequest({ board, piece: "I", nextPiece: "T", state, stats: boardStats(board), linesCleared: 0, rowsToFall: 12 }, actions);
   assert.equal(typeof request.state, "string");
-  assert.match(request.state, /falling piece is an I bar/);
+  assert.equal(request.state.split("\n").length, HEIGHT + 2); // header, 20 rows, next piece
+  assert.match(request.state, /@/);
   assert.deepEqual(Object.keys(request.questions.move.criteria), actions.map((a) => a.id));
-  for (const text of Object.values(request.questions.move.criteria)) assert.ok(text.split(/\s+/).length <= 18, text);
-  // Moving right puts the bar over the well: that option says it clears four lines.
-  assert.match(request.questions.move.criteria.right, /clears four lines/);
+  for (const text of Object.values(request.questions.move.criteria)) assert.ok(text.split(/\s+/).length <= 20, text);
 });
 
