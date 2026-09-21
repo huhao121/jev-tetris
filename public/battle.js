@@ -6,10 +6,11 @@
 // garbage for the opponent and the first to top out loses; with independent
 // boards the survivor must outlast the loser's piece count.
 
-import { createJevPlayer, createHaikuPlayer, createGeminiPlayer, createLayaPlayer, checkLayaServer, HAIKU_MODEL, GEMINI_MODEL } from "./players.js";
+import { OPPONENTS, createJevPlayer, checkLayaServer } from "./players.js";
 import {
   SPEEDUPS,
   PRESENT,
+  STORAGE,
   sleep,
   formatClock,
   describeSpeedup,
@@ -20,16 +21,10 @@ import {
   runModelSide,
   markTopOut,
   comparisonTable,
+  judgeRound,
 } from "./arena.js";
 
 const $ = (id) => document.getElementById(id);
-const STORAGE = { jev: "jev_tetris_api_key", haiku: "jev_tetris_anthropic_key", gemini: "jev_tetris_gemini_key", laya: "jev_tetris_laya_endpoint" };
-const OPPONENTS = {
-  haiku: { name: "Claude Haiku 4.5", short: "Haiku 4.5", badge: "haiku", label: `${HAIKU_MODEL} · Anthropic`, keyName: "Anthropic", create: (key) => createHaikuPlayer(key) },
-  gemini: { name: "Gemini 3.8 Flash", short: "Gemini 3.8", badge: "gemini", label: `${GEMINI_MODEL} · Google`, keyName: "Gemini", create: (key) => createGeminiPlayer(key) },
-  laya: { name: "Laya", short: "Laya", badge: "laya", label: "laya · local, open weights", keyName: "server address", create: (endpoint) => createLayaPlayer({ endpoint }) },
-};
-
 const ui = {
   jevKey: $("jevKey"),
   haikuKey: $("haikuKey"),
@@ -101,46 +96,8 @@ function topOut(side) {
 
 function checkEnd(timeUp = false) {
   if (!battle) return;
-  const [L, R] = sides;
-  const bothOver = L.over && R.over;
-  const oneOver = L.over || R.over;
-  if (!oneOver && !timeUp) return;
-  if (oneOver && !bothOver && !timeUp) {
-    const loser = L.over ? L : R;
-    const survivor = loser === L ? R : L;
-    if (battle.garbage) {
-      // Versus: the boards are coupled by garbage, so the first to top out loses.
-      finish(survivor, loser, `${survivor.player.name} wins: ${loser.player.name} topped out first`);
-      return;
-    }
-    // Independent boards: a fast player cycles through more pieces per minute, so
-    // wall-clock survival would reward slowness; pieces survived is the clock.
-    if (survivor.pieces > loser.pieces) {
-      finish(survivor, loser, `${survivor.player.name} wins: survived past ${loser.pieces} pieces`);
-    } else {
-      loser.overlay.textContent = `Topped out at ${formatClock(loser.lostAt)} after ${loser.pieces} pieces · ${survivor.player.name} must pass ${loser.pieces}`;
-    }
-    return;
-  }
-  let winner = null;
-  let loser = null;
-  let reason;
-  if (bothOver && L.pieces !== R.pieces) {
-    winner = L.pieces > R.pieces ? L : R;
-    loser = winner === L ? R : L;
-    reason = `${winner.player.name} wins: lasted more pieces`;
-  } else if (L.lines !== R.lines) {
-    winner = L.lines > R.lines ? L : R;
-    loser = winner === L ? R : L;
-    reason = `${winner.player.name} wins on lines${timeUp ? " at the time limit" : ""}`;
-  } else if (L.stats.missed !== R.stats.missed) {
-    winner = L.stats.missed < R.stats.missed ? L : R;
-    loser = winner === L ? R : L;
-    reason = `${winner.player.name} wins on fewer missed deadlines`;
-  } else {
-    reason = timeUp ? "Draw at the time limit" : "Draw";
-  }
-  finish(winner, loser, reason);
+  const verdict = judgeRound(sides[0], sides[1], { garbage: battle.garbage, timeUp });
+  if (verdict) finish(verdict.winner, verdict.loser, verdict.reason);
 }
 
 function finish(winner, loser, reason) {

@@ -42,6 +42,23 @@ pieces per minute, the survivor then has to outlast the loser's piece count to w
 answers" toggle removes gravity so only decision quality is compared. Append `?present` to the URL
 for a stripped-down layout meant for recordings.
 
+### Recording a series: the presentation page
+
+[`present.html`](public/present.html) is the layout for videos: boards as tall as the window, a
+best-of-N score in the middle, the round clock, the round result and a round-by-round list, and
+nothing else once the series starts. Every round draws a fresh random seed that both sides share.
+Rounds follow each other after a pause you set (0 waits for you), and the series ends when one side
+has a majority, with a totals table for the whole series.
+
+![Presentation page, best of 3](docs/present.png)
+
+Open [jev-tetris.vercel.app/present.html](https://jev-tetris.vercel.app/present.html) (or
+`http://localhost:3000/present.html`), fill in the setup card, size the window to 1280 × 720 or
+1920 × 1080, start your screen recorder and press **Start series**. Keys while it runs: Space starts
+the next round now, Esc ends the round (twice to end the series), N opens the setup for a new series.
+`?opponent=laya&rounds=5&hold=8&gravity=150&speedup=normal&seed=42` pre-fills the form; `seed`
+switches to reproducible seeds (seed, seed+1, …) instead of random ones.
+
 ### Results so far
 
 Seed 42, one run each. Jev is not fully deterministic between runs, so treat these as samples.

@@ -33,6 +33,10 @@ export const SPAWN_X = 3;
 
 // ?present strips a page down to the boards and the clock for recordings.
 export const PRESENT = new URLSearchParams(location.search).has("present");
+
+// localStorage keys shared by the battle and presentation pages, so keys
+// remembered on one page are available on the other.
+export const STORAGE = { jev: "jev_tetris_api_key", haiku: "jev_tetris_anthropic_key", gemini: "jev_tetris_gemini_key", laya: "jev_tetris_laya_endpoint" };
 if (PRESENT) document.body.classList.add("present");
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -362,6 +366,43 @@ export async function settlePiece(side, landed, ctx) {
   drawSide(side);
   renderSideStats(side);
   ctx.onPiece?.(side);
+}
+
+// Decides whether a round is over. Returns null while play continues, else
+// { winner, loser, reason } (both null on a draw). In versus mode the first to
+// top out loses. With independent boards a fast player cycles through more
+// pieces per minute, so wall-clock survival would reward slowness: a lone
+// top-out only ends the round once the survivor has passed the loser's piece
+// count, and the loser's overlay says what has to be beaten meanwhile.
+export function judgeRound(L, R, { garbage, timeUp = false }) {
+  const bothOver = L.over && R.over;
+  const oneOver = L.over || R.over;
+  if (!oneOver && !timeUp) return null;
+  if (oneOver && !bothOver && !timeUp) {
+    const loser = L.over ? L : R;
+    const survivor = loser === L ? R : L;
+    if (garbage) return { winner: survivor, loser, reason: `${survivor.player.name} wins: ${loser.player.name} topped out first` };
+    if (survivor.pieces > loser.pieces) return { winner: survivor, loser, reason: `${survivor.player.name} wins: survived past ${loser.pieces} pieces` };
+    loser.overlay.textContent = `Topped out at ${formatClock(loser.lostAt)} after ${loser.pieces} pieces · ${survivor.player.name} must pass ${loser.pieces}`;
+    return null;
+  }
+  let winner = null;
+  let loser = null;
+  let reason;
+  if (bothOver && L.pieces !== R.pieces) {
+    winner = L.pieces > R.pieces ? L : R;
+    reason = `${winner.player.name} wins: lasted more pieces`;
+  } else if (L.lines !== R.lines) {
+    winner = L.lines > R.lines ? L : R;
+    reason = `${winner.player.name} wins on lines${timeUp ? " at the time limit" : ""}`;
+  } else if (L.stats.missed !== R.stats.missed) {
+    winner = L.stats.missed < R.stats.missed ? L : R;
+    reason = `${winner.player.name} wins on fewer missed deadlines`;
+  } else {
+    reason = timeUp ? "Draw at the time limit" : "Draw";
+  }
+  if (winner) loser = winner === L ? R : L;
+  return { winner, loser, reason };
 }
 
 export function markTopOut(side, elapsedMs) {

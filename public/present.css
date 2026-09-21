@@ -1,0 +1,85 @@
+/* Presentation page: boards as tall as the window allows, a series score in
+   the middle, and nothing else once the series is running. */
+:root { --bh: min(calc(100vh - 214px), 900px); }
+body.present-page { background: #0b0e15; overflow: hidden; min-height: 100vh; }
+
+.stage {
+  display: grid;
+  grid-template-columns: auto clamp(340px, 24vw, 460px) auto;
+  justify-content: center;
+  align-items: start;
+  gap: 32px;
+  padding: 16px 28px 12px;
+}
+.stage .player { gap: 8px; }
+.stage .player-head { gap: 1px; }
+.stage .badge { font-size: 19px; }
+.stage canvas.board { width: calc(var(--bh) / 2); height: var(--bh); }
+.stage .player .overlay { font-size: 24px; }
+.stage .incoming { min-height: 16px; font-size: 12px; }
+.stage .pstats { grid-template-columns: repeat(4, 1fr); gap: 2px 6px; width: calc(var(--bh) / 2); }
+.stage .pstats .stat span { white-space: nowrap; }
+.stage .pstats .stat { gap: 0; }
+.stage .pstats .stat .label { font-size: 10px; }
+.stage .pstats .stat span:not(.label) { font-size: 14px; }
+
+.center { display: flex; flex-direction: column; gap: 6px; text-align: center; padding-top: 4px; min-width: 0; }
+.series-title { font-size: clamp(12px, 1.4vh, 15px); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.score {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  font-size: clamp(56px, 9vh, 104px); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; margin-top: 4px;
+}
+.score .sep { color: var(--muted); font-size: 0.6em; padding: 0 10px; }
+.score-names { display: grid; grid-template-columns: 1fr auto 1fr; font-size: clamp(12px, 1.5vh, 17px); color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+.round-label { font-size: clamp(15px, 2vh, 22px); font-weight: 600; margin-top: 10px; }
+.stage .clock { font-size: clamp(44px, 6.5vh, 76px); font-weight: 600; line-height: 1; margin-top: 2px; }
+.stage .level { font-size: clamp(13px, 1.6vh, 18px); margin-top: 0; }
+.match-info { display: block; font-size: clamp(12px, 1.4vh, 15px); line-height: 1.4; color: var(--muted); }
+.stage .result { font-size: clamp(14px, 1.8vh, 20px); padding: 9px 11px; margin-top: 4px; }
+.stage .result small { font-size: clamp(11px, 1.3vh, 14px); }
+.stage .result.series { border-color: var(--accent-2); }
+.stage .compare { font-size: clamp(11.5px, 1.45vh, 16px); }
+.stage .compare th, .stage .compare td { padding: 1px 3px; }
+.next { font-size: clamp(13px, 1.6vh, 18px); color: var(--accent-2); min-height: 18px; }
+.rounds {
+  list-style: none; margin: 4px 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: clamp(12px, 1.45vh, 16px); font-variant-numeric: tabular-nums;
+}
+.rounds li {
+  display: grid; grid-template-columns: 36px 1fr 46px 52px; gap: 6px; align-items: baseline;
+  padding: 3px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.035); text-align: left;
+}
+.rounds li .n { color: var(--muted); }
+.rounds li .w { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rounds li .w.jev { color: var(--accent-2); }
+.rounds li .w.haiku { color: #f4a340; }
+.rounds li .w.gemini { color: #7fb0ff; }
+.rounds li .w.laya { color: #f5d547; }
+.rounds li .w.draw { color: var(--muted); }
+.rounds li .t, .rounds li .l { text-align: right; color: var(--muted); }
+.stage .error { font-size: 12px; text-align: left; }
+
+/* Setup overlay: shown before a series and again after N. */
+.setup {
+  position: fixed; inset: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(6, 8, 12, 0.84); padding: 20px; overflow: auto;
+}
+.setup .card { width: 460px; max-width: 100%; }
+.setup .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; margin-top: 6px; }
+.setup .field input[type="text"] {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+  padding: 7px 10px; font-family: var(--mono); font-size: 13px; width: 100%;
+}
+.setup .center-controls { margin-top: 6px; }
+.setup .hint { line-height: 1.6; }
+.setup .hint kbd {
+  display: inline-block; min-width: 18px; padding: 0 5px; text-align: center;
+  background: var(--panel-2); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px;
+  font-family: var(--mono); font-size: 11px; color: var(--text);
+}
+.setup #setupError { margin-top: 10px; }
+
+/* The model label must never wrap: a long runtime string would push the stats off screen. */
+.stage .model { max-width: calc(var(--bh) / 2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

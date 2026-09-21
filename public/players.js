@@ -375,3 +375,11 @@ export function createLayaPlayer({ endpoint = LAYA_DEFAULT_ENDPOINT, candidates 
     },
   };
 }
+
+// ---- Opponent table for the battle and presentation pages -------------------------------
+// `create(key)` takes the API key, or the server address for Laya.
+export const OPPONENTS = {
+  haiku: { name: "Claude Haiku 4.5", short: "Haiku 4.5", badge: "haiku", label: `${HAIKU_MODEL} · Anthropic`, keyName: "Anthropic", create: (key) => createHaikuPlayer(key) },
+  gemini: { name: "Gemini 3.8 Flash", short: "Gemini 3.8", badge: "gemini", label: `${GEMINI_MODEL} · Google`, keyName: "Gemini", create: (key) => createGeminiPlayer(key) },
+  laya: { name: "Laya", short: "Laya", badge: "laya", label: "laya · local, open weights", keyName: "server address", create: (endpoint) => createLayaPlayer({ endpoint }) },
+};
