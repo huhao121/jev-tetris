@@ -13,7 +13,6 @@ import {
   fmtMs,
   fmtUsd,
   formatClock,
-  describeSpeedup,
   createRamp,
   freshStats,
   makeSide,
@@ -60,7 +59,6 @@ const ui = {
   roundLabel: $("roundLabel"),
   clock: $("clock"),
   level: $("level"),
-  matchInfo: $("matchInfo"),
   result: $("result"),
   seriesCard: $("seriesCard"),
   next: $("next"),
@@ -150,7 +148,7 @@ function gravityNow() {
 
 function renderLevel() {
   const level = round ? round.ramp.level() : 1;
-  ui.level.textContent = series?.lockstep ? "no gravity" : `Level ${level} · ${gravityNow()} ms per row`;
+  ui.level.textContent = series?.lockstep ? "no gravity" : `Level ${level}`;
   ui.level.classList.toggle("hot", level >= 4);
 }
 
@@ -257,9 +255,6 @@ async function startRound() {
   ui.result.classList.add("hidden");
   ui.next.classList.add("hidden");
   ui.roundLabel.textContent = `Round ${n} of ${series.total}`;
-  ui.matchInfo.textContent =
-    `seed ${seed} · ${series.lockstep ? "no gravity, wait for answers" : `${series.gravityMs} ms per row, ${describeSpeedup(series.speedup)}`}` +
-    (series.garbage ? " · cleared lines attack" : "");
   renderLevel();
   for (const c of [3, 2, 1]) {
     ui.clock.textContent = String(c);
