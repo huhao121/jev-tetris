@@ -23,6 +23,7 @@ import {
 } from "./lib/typesafe.mjs";
 import { forwardToAnthropic } from "./lib/anthropic.mjs";
 import { forwardToGemini } from "./lib/gemini.mjs";
+import { forwardToDeepSeek } from "./lib/deepseek.mjs";
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "public");
@@ -95,6 +96,12 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/api/gemini" && req.method === "POST") {
       const body = await readJsonBody(req);
       writeResult(res, await forwardToGemini({ key: req.headers["x-goog-api-key"] || "", body }));
+      return;
+    }
+    if (url.pathname === "/api/deepseek" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      const key = (req.headers.authorization || "").replace(/^Bearer\s+/i, "") || req.headers["x-api-key"] || "";
+      writeResult(res, await forwardToDeepSeek({ key, body }));
       return;
     }
     if (url.pathname === "/api/models" && req.method === "GET") {

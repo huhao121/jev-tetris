@@ -1,13 +1,19 @@
 # Jev vs the LLMs: real-time Tetris
 
+> **Fork 说明与增强 (huhao121/jev-tetris)**:
+> 本项目 Fork 自 [trungdq88/jev-tetris](https://github.com/trungdq88/jev-tetris)，在保留原版 Jev vs Claude Haiku / Gemini 对决机制的基础上进行了两项关键增强：
+> 1. **支持 DeepSeek 实时对决**：新增 `DeepSeek V4.1 Flash` (`deepseek-flash`) 模型接入，国内开发者只需配置 DeepSeek API Key 即可低门槛体验大模型极速俄罗斯方块对抗。
+> 2. **赛博霓虹电竞 UI**：重构了高饱和度科技方块配色（晶莹电光青、赛博霓虹紫等）与毛玻璃卡片对战看板，支持一键沉浸式录屏模式（快捷键 `F`）。
+
 Two AI models play Tetris against each other in real time. [Jev](https://docs.typesafe.ai), TypeSafe's
-System One model, faces Claude Haiku 4.5, Gemini 3.8 Flash, or [Laya](https://github.com/NandhaKishorM/laya),
-an open-weight typed-decision model running on your own machine. Same piece sequence, same options, same
+System One model, faces Claude Haiku 4.5, Gemini 3.8 Flash, DeepSeek Flash, or [Laya](https://github.com/NandhaKishorM/laya)
+(an open-weight typed-decision model running locally). Same piece sequence, same options, same
 clock. Every line you clear lands on your opponent's board as a garbage row. Whoever tops out first loses.
 
 **Play it live:** [jev-tetris.vercel.app](https://jev-tetris.vercel.app)
-(bring a TypeSafe key plus an Anthropic or Gemini key; the proxy stores nothing. Laya needs no key,
+(bring a TypeSafe key plus an Anthropic, Gemini or DeepSeek key; the proxy stores nothing. Laya needs no key,
 just its local server, see [Laya, the open-weight opponent](#laya-the-open-weight-opponent)).
+
 
 ![Jev vs Claude Haiku, versus mode](docs/battle.png)
 

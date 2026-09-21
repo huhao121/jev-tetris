@@ -29,8 +29,10 @@ const ui = {
   jevKey: $("jevKey"),
   haikuKey: $("haikuKey"),
   geminiKey: $("geminiKey"),
+  deepseekKey: $("deepseekKey"),
   haikuKeyField: $("haikuKeyField"),
   geminiKeyField: $("geminiKeyField"),
+  deepseekKeyField: $("deepseekKeyField"),
   layaField: $("layaField"),
   layaNote: $("layaNote"),
   layaEndpoint: $("layaEndpoint"),
@@ -109,10 +111,23 @@ function finish(winner, loser, reason) {
     winner.section.classList.add("winner");
     loser?.section.classList.add("loser");
   }
-  const gravityNote =
-    (battle.lockstep ? "lockstep, no gravity" : `gravity ${battle.ramp.gravityMs} → ${gravityNow()} ms/row, level ${battle.ramp.level()}`) +
-    (battle.garbage ? ", versus" : "");
-  ui.result.innerHTML = `${reason}<small>${formatClock(elapsed)} elapsed · seed ${ui.seed.value} · ${gravityNote}</small>${comparisonTable(L, R)}`;
+  const winnerName = winner ? (winner.player.short || winner.player.name) : "平局";
+  const loserName = loser ? (loser.player.short || loser.player.name) : "";
+  const headerHtml = winner
+    ? `<div style="font-size:22px;font-weight:850;color:#10b981;margin-bottom:6px;">🏆 ${winnerName} 赢了！</div>`
+    : `<div style="font-size:20px;font-weight:800;color:#f59e0b;">时间到 · 双方打平</div>`;
+  const reasonHtml = loser 
+    ? `<div style="color:#ef4444;font-size:13px;font-weight:600;margin-bottom:8px;">${loserName} 思考太慢没跟上下落，在 ${formatClock(elapsed)} 顶格出局</div>` 
+    : `<div style="color:var(--text-dim);font-size:13px;">${reason}</div>`;
+
+  const gravityNote = (battle.lockstep ? "回合等待模式" : `重力递增至 ${gravityNow()} ms/格`) + (battle.garbage ? " · 垃圾行对抗" : "");
+  
+  ui.result.innerHTML = `
+    ${headerHtml}
+    ${reasonHtml}
+    <small style="color:var(--muted);font-size:11px;">用时 ${formatClock(elapsed)} · 种子 ${ui.seed.value} · ${gravityNote}</small>
+    ${comparisonTable(L, R)}
+  `;
   ui.result.classList.remove("hidden");
   ui.start.disabled = false;
   ui.stop.disabled = true;
@@ -129,7 +144,10 @@ function opponentChoice() {
 
 function opponentKey() {
   const v = ui.opponent.value;
-  return (v === "gemini" ? ui.geminiKey : v === "laya" ? ui.layaEndpoint : ui.haikuKey).value.trim();
+  if (v === "deepseek") return ui.deepseekKey.value.trim();
+  if (v === "gemini") return ui.geminiKey.value.trim();
+  if (v === "laya") return ui.layaEndpoint.value.trim();
+  return ui.haikuKey.value.trim();
 }
 
 function renderOpponent() {
@@ -140,8 +158,9 @@ function renderOpponent() {
   const v = ui.opponent.value;
   ui.haikuKeyField.classList.toggle("hidden", v !== "haiku");
   ui.geminiKeyField.classList.toggle("hidden", v !== "gemini");
+  ui.deepseekKeyField.classList.toggle("hidden", v !== "deepseek");
   ui.layaField.classList.toggle("hidden", v !== "laya");
-  ui.layaNote.classList.toggle("hidden", v !== "laya");
+  ui.layaNote?.classList.toggle("hidden", v !== "laya");
   document.title = `Jev vs ${opp.name}`;
 }
 
@@ -179,9 +198,11 @@ async function startBattle() {
   ui.result.classList.add("hidden");
   ui.start.disabled = true;
   ui.stop.disabled = false;
-  ui.matchInfo.textContent =
-    (lockstep ? `seed ${seed} · lockstep, no gravity` : `seed ${seed} · ${gravityMs} ms per row, ${describeSpeedup(ui.speedup.value)}`) +
-    (garbage ? " · cleared lines attack" : "");
+  if (ui.matchInfo) {
+    ui.matchInfo.textContent =
+      (lockstep ? `seed ${seed} · lockstep, no gravity` : `seed ${seed} · ${gravityMs} ms per row, ${describeSpeedup(ui.speedup.value)}`) +
+      (garbage ? " · cleared lines attack" : "");
+  }
   if (PRESENT) {
     document.body.classList.add("running");
     for (const n of [3, 2, 1]) {
@@ -216,7 +237,8 @@ function persistKeys() {
       localStorage.setItem(STORAGE.jev, ui.jevKey.value.trim());
       localStorage.setItem(STORAGE.haiku, ui.haikuKey.value.trim());
       localStorage.setItem(STORAGE.gemini, ui.geminiKey.value.trim());
-      localStorage.setItem(STORAGE.laya, ui.layaEndpoint.value.trim());
+      localStorage.setItem(STORAGE.deepseek, ui.deepseekKey?.value.trim() || "");
+      localStorage.setItem(STORAGE.laya, ui.layaEndpoint?.value.trim() || "");
     } else {
       for (const k of Object.values(STORAGE)) localStorage.removeItem(k);
     }
@@ -243,12 +265,14 @@ try {
   const j = localStorage.getItem(STORAGE.jev);
   const h = localStorage.getItem(STORAGE.haiku);
   const g = localStorage.getItem(STORAGE.gemini);
+  const d = localStorage.getItem(STORAGE.deepseek);
   const l = localStorage.getItem(STORAGE.laya);
   if (j) ui.jevKey.value = j;
   if (h) ui.haikuKey.value = h;
   if (g) ui.geminiKey.value = g;
-  if (l) ui.layaEndpoint.value = l;
-  if (j || h || g) ui.remember.checked = true;
+  if (d && ui.deepseekKey) ui.deepseekKey.value = d;
+  if (l && ui.layaEndpoint) ui.layaEndpoint.value = l;
+  if (j || h || g || d || l) ui.remember.checked = true;
 } catch {
   /* storage unavailable */
 }

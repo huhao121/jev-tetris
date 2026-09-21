@@ -46,13 +46,13 @@ const RAW_PIECES = {
 export const PIECE_NAMES = Object.keys(RAW_PIECES);
 
 export const PIECE_COLORS = {
-  I: "#3fd6f0",
-  O: "#f5d547",
-  T: "#b565f2",
-  S: "#5fe38a",
-  Z: "#f26b6b",
-  J: "#5b8cff",
-  L: "#f4a340",
+  I: "#00f2fe", // 晶莹电光青
+  O: "#fbbf24", // 琥珀金黄
+  T: "#c084fc", // 赛博霓虹紫
+  S: "#34d399", // 极光翡翠绿
+  Z: "#f43f5e", // 能量绯红
+  J: "#38bdf8", // 深空天蓝
+  L: "#fb923c", // 活力烈焰橙
 };
 
 // Normalise every rotation so its bounding box starts at (0,0) and record its size.

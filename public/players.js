@@ -376,10 +376,123 @@ export function createLayaPlayer({ endpoint = LAYA_DEFAULT_ENDPOINT, candidates 
   };
 }
 
+// ---- DeepSeek -----------------------------------------------------------------------
+
+export const DEEPSEEK_MODEL = "deepseek-flash";
+// api.deepseek.com pricing for deepseek-flash
+export const DEEPSEEK_PRICE = { input: 0.14 / 1e6, output: 0.28 / 1e6 };
+
+const DEEPSEEK_SYSTEM = [
+  "You are playing Tetris in real time. Each turn you get the board and a list of every legal placement for the current piece, each described by its outcome.",
+  "Pick the best placement. Good play: clear lines (more at once is better), never create holes unless every option does, keep the stack low and the surface flat, avoid several deep wells.",
+  "The piece is falling rapidly in real time! You MUST immediately call the place_piece tool naming the option_id.",
+].join(" ");
+
+export function buildDeepSeekTool(placements) {
+  return {
+    type: "function",
+    function: {
+      name: "place_piece",
+      description: "Choose where to drop the current piece by naming one option id from the options list.",
+      parameters: {
+        type: "object",
+        properties: {
+          option_id: {
+            type: "string",
+            enum: placements.map((p) => p.id),
+          },
+        },
+        required: ["option_id"],
+      },
+    },
+  };
+}
+
+export function parseDeepSeekChoice(json, placements) {
+  const byId = new Map(placements.map((p) => [p.id, p]));
+  const message = json?.choices?.[0]?.message;
+  const toolCalls = message?.tool_calls || [];
+  for (const tc of toolCalls) {
+    if (tc.function?.name === "place_piece") {
+      try {
+        const args = typeof tc.function.arguments === "string" ? JSON.parse(tc.function.arguments) : tc.function.arguments;
+        if (byId.has(args?.option_id)) return byId.get(args.option_id);
+      } catch {}
+    }
+  }
+  const text = (message?.content || "") + " " + (message?.reasoning_content || "");
+  for (const m of text.match(/\bp\d+\b/g) || []) if (byId.has(m)) return byId.get(m);
+  return null;
+}
+
+export function createDeepSeekPlayer(apiKey, { endpoint = "api/deepseek", model = DEEPSEEK_MODEL } = {}) {
+  return {
+    name: "DeepSeek V4.1 Flash",
+    short: "DeepSeek Flash",
+    model,
+    async decide(gameInfo, placements, signal) {
+      const body = {
+        model,
+        messages: [
+          { role: "system", content: DEEPSEEK_SYSTEM },
+          { role: "user", content: buildHaikuPrompt(gameInfo, placements) },
+        ],
+        tools: [buildDeepSeekTool(placements)],
+        tool_choice: "auto",
+        thinking: { type: "disabled" },
+        extra_body: { thinking: { type: "disabled" } },
+        max_tokens: 64,
+      };
+      const started = performance.now();
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+        body: JSON.stringify(body),
+        signal,
+      });
+      const latencyMs = performance.now() - started;
+      const text = await res.text();
+      let json = null;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = null;
+      }
+      if (!res.ok) {
+        const err = new Error(json?.error?.message || text || `HTTP ${res.status}`);
+        err.status = res.status;
+        throw err;
+      }
+      const chosen = parseDeepSeekChoice(json, placements);
+      const u = json.usage || {};
+      const inputTokens = u.prompt_tokens || 0;
+      const outputTokens = u.completion_tokens || 0;
+      return {
+        chosen,
+        latencyMs,
+        inputTokens,
+        outputTokens,
+        cost: inputTokens * DEEPSEEK_PRICE.input + outputTokens * DEEPSEEK_PRICE.output,
+        note: chosen ? `picked ${chosen.id}` : `invalid reply ${JSON.stringify(json.choices?.[0] || json).slice(0, 60)}`,
+      };
+    },
+  };
+}
+
+export const STORAGE = {
+  jev: "jev_tetris_api_key",
+  haiku: "jev_tetris_anthropic_key",
+  gemini: "jev_tetris_gemini_key",
+  deepseek: "jev_tetris_deepseek_key",
+  laya: "jev_tetris_laya_endpoint",
+};
+
 // ---- Opponent table for the battle and presentation pages -------------------------------
 // `create(key)` takes the API key, or the server address for Laya.
 export const OPPONENTS = {
+  deepseek: { name: "DeepSeek V4.1 Flash", short: "DeepSeek", badge: "deepseek", label: `${DEEPSEEK_MODEL} · DeepSeek`, keyName: "DeepSeek", create: (key) => createDeepSeekPlayer(key) },
   haiku: { name: "Claude Haiku 4.5", short: "Haiku 4.5", badge: "haiku", label: `${HAIKU_MODEL} · Anthropic`, keyName: "Anthropic", create: (key) => createHaikuPlayer(key) },
   gemini: { name: "Gemini 3.8 Flash", short: "Gemini 3.8", badge: "gemini", label: `${GEMINI_MODEL} · Google`, keyName: "Gemini", create: (key) => createGeminiPlayer(key) },
   laya: { name: "Laya", short: "Laya", badge: "laya", label: "laya · local, open weights", keyName: "server address", create: (endpoint) => createLayaPlayer({ endpoint }) },
 };
+

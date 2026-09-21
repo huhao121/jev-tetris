@@ -36,7 +36,7 @@ export const PRESENT = new URLSearchParams(location.search).has("present");
 
 // localStorage keys shared by the battle and presentation pages, so keys
 // remembered on one page are available on the other.
-export const STORAGE = { jev: "jev_tetris_api_key", haiku: "jev_tetris_anthropic_key", gemini: "jev_tetris_gemini_key", laya: "jev_tetris_laya_endpoint" };
+export const STORAGE = { jev: "jev_tetris_api_key", haiku: "jev_tetris_anthropic_key", gemini: "jev_tetris_gemini_key", deepseek: "jev_tetris_deepseek_key", laya: "jev_tetris_laya_endpoint" };
 if (PRESENT) document.body.classList.add("present");
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -182,7 +182,9 @@ export function previewSide(side, seed) {
 export function drawSide(side) {
   const { ctx, cell, canvas } = side;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+  
+  // 细腻科技感微网格
+  ctx.strokeStyle = "rgba(255,255,255,0.035)";
   ctx.lineWidth = 1;
   for (let x = 1; x < WIDTH; x++) {
     ctx.beginPath();
@@ -196,17 +198,35 @@ export function drawSide(side) {
     ctx.lineTo(canvas.width, y * cell);
     ctx.stroke();
   }
+
   const paint = (x, y, color, alpha = 1, outline = false) => {
     ctx.globalAlpha = alpha;
+    const px = x * cell + 1.5;
+    const py = y * cell + 1.5;
+    const sz = cell - 3;
+    const rad = Math.max(2, cell * 0.15);
+
     if (outline) {
       ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x * cell + 2, y * cell + 2, cell - 4, cell - 4);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(px, py, sz, sz, rad) : ctx.strokeRect(px, py, sz, sz);
+      ctx.stroke();
     } else {
+      // 晶体主体
       ctx.fillStyle = color;
-      ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
-      ctx.fillStyle = "rgba(255,255,255,0.18)";
-      ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, 3);
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(px, py, sz, sz, rad);
+      else ctx.rect(px, py, sz, sz);
+      ctx.fill();
+
+      // 顶部晶莹反光层 (Highlight Lip)
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.fillRect(px + 1, py + 1, sz - 2, Math.max(2, sz * 0.22));
+
+      // 底部微暗阴影沉降 (Bevel Depth)
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.fillRect(px + 1, py + sz - Math.max(2, sz * 0.18), sz - 2, Math.max(2, sz * 0.18));
     }
     ctx.globalAlpha = 1;
   };
@@ -241,35 +261,14 @@ export function drawSide(side) {
 export function modelStatsRows(side) {
   const s = side.stats;
   const avg = s.calls ? fmtMs(s.latency / s.calls) : "–";
-  return PRESENT
-    ? [
-        ["Lines", side.lines],
-        ["Pieces", side.pieces],
-        ["Sent", s.sent],
-        ["Received", s.received],
-        ["Latency", avg],
-        ["Missed", s.missed],
-        ["In tok", s.inputTokens.toLocaleString()],
-        ["Out tok", s.outputTokens.toLocaleString()],
-        ["Cost", fmtUsd(s.cost)],
-        ["Per move", s.calls ? fmtUsd(s.cost / s.calls, 5) : "–"],
-        ["Calls", s.calls],
-        ["Invalid", s.invalid + s.errors],
-      ]
-    : [
-        ["Lines", side.lines],
-        ["Pieces", side.pieces],
-        ["Score", side.score],
-        ["Sent", s.sent],
-        ["Received", s.received],
-        ["Avg latency", avg],
-        ["Missed", s.missed],
-        ["Invalid", s.invalid + s.errors],
-        ["Tokens in", s.inputTokens.toLocaleString()],
-        ["Tokens out", s.outputTokens.toLocaleString()],
-        ["Cost", fmtUsd(s.cost)],
-        ["Per move", s.calls ? fmtUsd(s.cost / s.calls, 5) : "–"],
-      ];
+  return [
+    ["消除行数", side.lines],
+    ["已落方块", side.pieces],
+    ["当前得分", side.score],
+    ["平均延迟", avg],
+    ["超时落空", s.missed],
+    ["攻击垃圾行", s.sent],
+  ];
 }
 
 export function renderSideStats(side) {
@@ -284,7 +283,7 @@ export function comparisonTable(L, R, rows = modelComparisonRows) {
   const row = (label, f) => `<tr><th>${label}</th><td>${f(L)}</td><td>${f(R)}</td></tr>`;
   return `<table class="compare">
     <colgroup><col class="metric" /><col /><col /></colgroup>
-    <thead><tr><th></th><th>${L.player.short || L.player.name}</th><th>${R.player.short || R.player.name}</th></tr></thead>
+    <thead><tr><th>指标对比</th><th>${L.player.short || L.player.name}</th><th>${R.player.short || R.player.name}</th></tr></thead>
     <tbody>${rows.map(([label, f]) => row(label, f)).join("")}</tbody>
   </table>`;
 }
@@ -293,20 +292,12 @@ export const avgLatency = (s) => (s.stats.calls ? fmtMs(s.stats.latency / s.stat
 export const latencyRange = (s) => (s.stats.calls ? `${Math.round(s.stats.minLatency)}–${Math.round(s.stats.maxLatency)}` : "–");
 
 export const modelComparisonRows = [
-  ["Lines", (s) => s.lines],
-  ["Pieces", (s) => s.pieces],
-  ["Lines / piece", (s) => (s.pieces ? (s.lines / s.pieces).toFixed(2) : "–")],
-  ["Garbage sent", (s) => s.stats.sent],
-  ["Garbage received", (s) => s.stats.received],
-  ["Avg latency", avgLatency],
-  ["Min–max ms", latencyRange],
-  ["Missed", (s) => s.stats.missed],
-  ["Invalid", (s) => s.stats.invalid + s.stats.errors],
-  ["Model calls", (s) => s.stats.calls],
-  ["Tokens in", (s) => s.stats.inputTokens.toLocaleString()],
-  ["Tokens out", (s) => s.stats.outputTokens.toLocaleString()],
-  ["Cost", (s) => fmtUsd(s.stats.cost)],
-  ["Cost / move", (s) => (s.stats.calls ? fmtUsd(s.stats.cost / s.stats.calls, 5) : "–")],
+  ["消除行数", (s) => `<b style="font-size:14px;color:${s.lines > 0 ? '#10b981' : '#94a3b8'}">${s.lines}</b>`],
+  ["已落方块", (s) => s.pieces],
+  ["平均决策耗时", (s) => `<b style="color:${s.stats.calls && s.stats.latency / s.stats.calls < 400 ? '#00f2fe' : '#f59e0b'}">${avgLatency(s)}</b>`],
+  ["超时未跟上", (s) => s.stats.missed > 0 ? `<b style="color:#ef4444;">${s.stats.missed} 块</b>` : "0"],
+  ["向对手丢垃圾行", (s) => s.stats.sent],
+  ["模型有效调用", (s) => s.stats.calls],
 ];
 
 // ---- Garbage -----------------------------------------------------------------------------------
@@ -411,7 +402,11 @@ export function markTopOut(side, elapsedMs) {
   side.active = null;
   side.target = null;
   drawSide(side);
-  side.overlay.textContent = `Topped out at ${formatClock(elapsedMs)}`;
+  side.overlay.innerHTML = `
+    <div class="ko-badge">K.O.</div>
+    <div class="ko-title">顶格淘汰</div>
+    <div class="ko-time">用时 ${formatClock(elapsedMs)}</div>
+  `;
   side.overlay.classList.remove("hidden");
   side.section.classList.add("loser");
   renderSideStats(side);

@@ -215,3 +215,17 @@ test("Laya gets a short text board and the top candidates described location-fir
     assert.ok(text.split(/\s+/).length <= 14, text);
   }
 });
+
+test("DeepSeek tool schema enumerates the options and the parser reads the function call", async () => {
+  const { buildDeepSeekTool, parseDeepSeekChoice } = await import("../public/players.js");
+  const placements = enumeratePlacements(emptyBoard(), "T");
+  const tool = buildDeepSeekTool(placements);
+  assert.equal(tool.function.name, "place_piece");
+  assert.deepEqual(tool.function.parameters.properties.option_id.enum, placements.map((p) => p.id));
+  const resp = (choice) => ({ choices: [{ message: choice }] });
+  assert.equal(parseDeepSeekChoice(resp({ tool_calls: [{ function: { name: "place_piece", arguments: '{"option_id":"p1"}' } }] }), placements).id, "p1");
+  assert.equal(parseDeepSeekChoice(resp({ content: "I select p3" }), placements).id, "p3");
+  assert.equal(parseDeepSeekChoice(resp({ tool_calls: [{ function: { name: "place_piece", arguments: '{"option_id":"p999"}' } }] }), placements), null);
+  assert.equal(parseDeepSeekChoice({}, placements), null);
+});
+

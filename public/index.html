@@ -1,34 +1,38 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Jev vs the LLMs</title>
-  <meta name="description" content="Two models play the same Tetris piece sequence in real time. First to top out loses." />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='6' height='14' fill='%233fd6f0'/><rect x='9' y='1' width='6' height='14' fill='%23f4a340'/></svg>" />
+  <title>Jev vs 大模型 · 俄罗斯方块实测</title>
+  <meta name="description" content="TypeSafe Jev vs Google Gemini / Claude. Two models play the same Tetris piece sequence in real time." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='6' height='14' fill='%2300f2fe'/><rect x='9' y='1' width='6' height='14' fill='%23c084fc'/></svg>" />
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="battle.css" />
 </head>
 <body>
   <header class="top">
-    <div>
-      <h1>Jev vs the LLMs</h1>
+    <div class="title-group">
+      <h1>
+        <span>Jev vs 大模型</span>
+        <span class="badge-live">LIVE</span>
+      </h1>
       <p class="sub">
-        Same piece sequence, same options, same clock. Pieces keep falling while each model thinks,
-        and gravity gets stronger as the minutes pass; a piece that lands before its answer arrives
-        locks where it is. Every line you clear lands on your opponent's board as a garbage row.
-        Whoever tops out first loses.
-        <a href="play.html">Play against Jev yourself</a> ·
-        <a href="solo.html">Single-player demo: Jev on its own</a> ·
-        <a href="present.html">Presentation page: best-of-N series for recordings</a>
+        Jev 快思考模型 VS 通用大模型 · 同一步序下落 · 谁先顶格谁输
       </p>
+    </div>
+    <div class="nav-links">
+      <a href="play.html" class="nav-btn">🎮 我来打 Jev</a>
+      <a href="solo.html" class="nav-btn">⚡ Jev 单人玩</a>
+      <a href="present.html" class="nav-btn">🏆 抢分录屏页</a>
+      <button id="toggle-present" class="nav-btn" style="cursor:pointer;" title="隐藏配置框，纯净大屏供短视频录制">🎥 录屏纯净模式</button>
     </div>
   </header>
 
   <main class="arena">
+    <!-- 左侧战区：Jev -->
     <section class="player" id="left">
       <div class="player-head">
-        <span class="badge jev">Jev</span>
+        <span class="badge jev">Jev (240ms)</span>
         <span class="model muted">jev-latest · TypeSafe</span>
       </div>
       <div class="board-wrap">
@@ -37,61 +41,70 @@
       </div>
       <div class="incoming" id="incomingL"></div>
       <div class="pstats" id="statsL"></div>
-      <div class="pmove muted" id="moveL">Waiting to start.</div>
+      <div class="pmove muted" id="moveL">准备好了</div>
     </section>
 
+    <!-- 中间控制与对决核心枢纽 -->
     <section class="center">
-      <div class="present-title">Real-time Tetris</div>
+      <div class="vs-block">
+        <div class="vs">VS</div>
+        <div class="clock" id="clock">0:00</div>
+        <div class="level" id="level">Level 1 · 150 ms/格</div>
+        <div class="match-info muted" id="matchInfo"></div>
+      </div>
+
+      <div class="controls center-controls">
+        <button id="start" class="primary">开始对战</button>
+        <button id="stop" disabled>停止</button>
+      </div>
+
+      <div id="result" class="result hidden"></div>
+      <div id="error" class="error hidden" role="alert"></div>
+
+      <!-- 密钥配置卡片 -->
       <div class="card" id="setup-card">
-        <h2>Keys</h2>
-        <label class="field">TypeSafe key <input id="jevKey" type="password" placeholder="apikey_…" autocomplete="off" spellcheck="false" /></label>
-        <label class="field">Opponent
+        <h2>🔑 接口密钥配置</h2>
+        <label class="field">TypeSafe API Key <input id="jevKey" type="password" placeholder="apikey_…" autocomplete="off" spellcheck="false" /></label>
+        <label class="field">对决对手 (Opponent)
           <select id="opponent">
-            <option value="haiku" selected>Claude Haiku 4.5 (Anthropic)</option>
+            <option value="deepseek" selected>DeepSeek V4.1 Flash (deepseek-flash)</option>
             <option value="gemini">Gemini 3.8 Flash (Google)</option>
+            <option value="haiku">Claude Haiku 4.5 (Anthropic)</option>
             <option value="laya">Laya (local, open weights)</option>
           </select>
         </label>
-        <label class="field" id="haikuKeyField">Anthropic key <input id="haikuKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" /></label>
-        <label class="field hidden" id="geminiKeyField">Gemini key <input id="geminiKey" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false" /></label>
+        <label class="field" id="deepseekKeyField">DeepSeek API Key <input id="deepseekKey" type="password" placeholder="sk-…" autocomplete="off" spellcheck="false" /></label>
+        <label class="field hidden" id="geminiKeyField">Gemini API Key <input id="geminiKey" type="password" placeholder="AIzaSy…" autocomplete="off" spellcheck="false" /></label>
+        <label class="field hidden" id="haikuKeyField">Anthropic API Key <input id="haikuKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" /></label>
         <label class="field hidden" id="layaField">Laya server <input id="layaEndpoint" type="text" value="http://localhost:8765" autocomplete="off" spellcheck="false" /></label>
-        <p class="hint hidden" id="layaNote">Laya runs on your own machine: <code>pip install laya-mlx</code> (Apple Silicon) or <code>pip install laya</code>, then
-          <code>python tools/laya_server.py</code> from the repo. No key, no cost.</p>
-        <label class="remember"><input id="remember" type="checkbox" /> Remember keys in this browser</label>
-        <p class="hint">Keys go from this page to the proxy in <code>server.mjs</code>, which forwards each to its API and stores nothing.</p>
+        <p class="hint hidden" id="layaNote">Laya 在本机运行：<code>pip install laya-mlx</code> (Apple Silicon) 或 <code>pip install laya</code>，然后在仓库中执行 <code>python tools/laya_server.py</code>。无需密钥，本地免费推理。</p>
+        <label class="field check"><input id="remember" type="checkbox" /> 在当前浏览器记住密钥</label>
       </div>
+
+      <!-- 规则微调卡片 -->
       <div class="card" id="rules-card">
-        <h2>Rules</h2>
-        <label class="field">Starting gravity <span class="muted" id="gravityLabel"></span><input id="gravity" type="range" min="60" max="400" step="10" value="150" /></label>
-        <label class="field">Speed-up
+        <h2>⚙️ 对局规则设定</h2>
+        <label class="field">初始下落速度 <span class="muted" id="gravityLabel"></span><input id="gravity" type="range" min="60" max="400" step="10" value="150" /></label>
+        <label class="field">难度递增速度
           <select id="speedup">
-            <option value="none">None: constant gravity</option>
-            <option value="gentle">Gentle: 10% faster every 30 s</option>
-            <option value="normal" selected>Normal: 15% faster every 20 s</option>
-            <option value="brutal">Brutal: 20% faster every 10 s</option>
+            <option value="none">匀速下落 (Constant)</option>
+            <option value="gentle">温和: 每 30 秒加速 10%</option>
+            <option value="normal" selected>标准: 每 20 秒加速 15%</option>
+            <option value="brutal">狂暴: 每 10 秒加速 20%</option>
           </select>
         </label>
-        <label class="field">Seed <input id="seed" type="number" value="42" /></label>
-        <label class="field">Time limit (min) <input id="limit" type="number" min="1" max="30" value="5" /></label>
-        <label class="field check"><input id="garbage" type="checkbox" checked /> Versus: cleared lines attack the opponent</label>
-        <label class="field check"><input id="lockstep" type="checkbox" /> Wait for answers (no gravity)</label>
+        <label class="field">随机种子 (Seed) <input id="seed" type="number" value="42" /></label>
+        <label class="field">对决限时 (分钟) <input id="limit" type="number" min="1" max="30" value="5" /></label>
+        <label class="field check"><input id="garbage" type="checkbox" checked /> 对战惩罚：消行向对手丢弃垃圾行</label>
+        <label class="field check"><input id="lockstep" type="checkbox" /> 回合等待模式 (不随重力下落)</label>
       </div>
-      <div class="vs">VS</div>
-      <div class="clock" id="clock">0:00</div>
-      <div class="level muted" id="level">Level 1 · 150 ms per row</div>
-      <div class="match-info" id="matchInfo"></div>
-      <div class="controls center-controls">
-        <button id="start" class="primary">Start battle</button>
-        <button id="stop" disabled>Stop</button>
-      </div>
-      <div id="result" class="result hidden"></div>
-      <div id="error" class="error hidden" role="alert"></div>
     </section>
 
+    <!-- 右侧战区：通用大模型对手 -->
     <section class="player" id="right">
       <div class="player-head">
-        <span class="badge haiku" id="badgeR">Claude Haiku 4.5</span>
-        <span class="model muted" id="modelR">claude-haiku-4-5 · Anthropic</span>
+        <span class="badge deepseek" id="badgeR">DeepSeek V4.1 Flash</span>
+        <span class="model muted" id="modelR">deepseek-flash · DeepSeek</span>
       </div>
       <div class="board-wrap">
         <canvas class="board" id="boardR" width="240" height="480" aria-label="Opponent's board"></canvas>
@@ -99,16 +112,29 @@
       </div>
       <div class="incoming" id="incomingR"></div>
       <div class="pstats" id="statsR"></div>
-      <div class="pmove muted" id="moveR">Waiting to start.</div>
+      <div class="pmove muted" id="moveR">等待开战...</div>
     </section>
   </main>
 
   <footer class="foot">
-    Each side sees the same board text and the same described placement list. Jev answers with a Choice
-    distribution; the opponent answers through a forced function call whose argument is one of the option
-    ids. Latency is part of the game.
+    两端看到完全相同的方块局面与可落点描述 · Jev 输出概率分布直接落子 · 通用大模型通过强制函数调用决策 · 延迟与速度即是生死！
   </footer>
 
   <script type="module" src="battle.js"></script>
+  <script>
+    // 沉浸录屏快捷切换
+    const btn = document.getElementById('toggle-present');
+    if (btn) {
+      btn.onclick = () => {
+        document.body.classList.toggle('present');
+        btn.textContent = document.body.classList.contains('present') ? '⚙️ 退出录屏模式' : '🎥 录屏沉浸模式';
+      };
+    }
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'f' || e.key === 'F') {
+        document.body.classList.toggle('present');
+      }
+    });
+  </script>
 </body>
 </html>
