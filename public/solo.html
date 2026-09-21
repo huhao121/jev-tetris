@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Jev plays Tetris (solo)</title>
-  <meta name="description" content="Demo: TypeSafe's Jev model chooses every Tetris move from placements the code enumerates." />
+  <meta name="description" content="Demo: TypeSafe's Jev model plays Tetris one move at a time: left, right, rotate, down or drop." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='6' height='6' fill='%233fd6f0'/><rect x='9' y='1' width='6' height='6' fill='%23f5d547'/><rect x='1' y='9' width='6' height='6' fill='%23b565f2'/><rect x='9' y='9' width='6' height='6' fill='%23f26b6b'/></svg>" />
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -13,9 +13,9 @@
     <div>
       <h1>Jev plays Tetris</h1>
       <p class="sub">
-        Code enumerates every legal placement and describes the outcome.
         <a href="https://docs.typesafe.ai" target="_blank" rel="noopener">Jev</a>, TypeSafe's System One model,
-        picks one with a single <code>choice</code> question per piece.
+        plays one move at a time, like a player at the keyboard. Each <code>choice</code> question offers the
+        moves possible right now, described by where the piece would land.
         <a href="./">Back to the battle</a>
       </p>
     </div>
