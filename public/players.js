@@ -299,6 +299,36 @@ export function buildLayaRequest(gameInfo, placements, limit = LAYA_CANDIDATES) 
   };
 }
 
+// Checks that tools/laya_server.py (and not some other program) answers at
+// the endpoint. Resolves to its /health payload, or throws a message that
+// says what to do.
+export async function checkLayaServer(endpoint) {
+  const base = endpoint.replace(/\/+$/, "");
+  let res;
+  try {
+    res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(4000) });
+  } catch (err) {
+    throw new Error(
+      `Nothing answered at ${base} (${err.message}). Start the Laya server first: python tools/laya_server.py. ` +
+        "If it is running, another program may own that port or the browser blocked the request; " +
+        "the terminal running the server shows what it received.",
+    );
+  }
+  let info = null;
+  try {
+    info = await res.json();
+  } catch {
+    info = null;
+  }
+  if (!res.ok || !info || info.ok !== true || !info.runtime) {
+    throw new Error(
+      `${base} answered, but not like tools/laya_server.py (HTTP ${res.status}). ` +
+        "Another program is probably using that port: start the Laya server with --port 8766 and put http://localhost:8766 here.",
+    );
+  }
+  return info;
+}
+
 export function createLayaPlayer({ endpoint = LAYA_DEFAULT_ENDPOINT, candidates = LAYA_CANDIDATES } = {}) {
   const base = endpoint.replace(/\/+$/, "");
   return {

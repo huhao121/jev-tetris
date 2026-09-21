@@ -6,7 +6,7 @@
 // garbage for the opponent and the first to top out loses; with independent
 // boards the survivor must outlast the loser's piece count.
 
-import { createJevPlayer, createHaikuPlayer, createGeminiPlayer, createLayaPlayer, HAIKU_MODEL, GEMINI_MODEL } from "./players.js";
+import { createJevPlayer, createHaikuPlayer, createGeminiPlayer, createLayaPlayer, checkLayaServer, HAIKU_MODEL, GEMINI_MODEL } from "./players.js";
 import {
   SPEEDUPS,
   PRESENT,
@@ -198,6 +198,17 @@ async function startBattle() {
   }
   hideError();
   persistKeys();
+  if (ui.opponent.value === "laya") {
+    ui.start.disabled = true;
+    try {
+      const info = await checkLayaServer(oppKey);
+      ui.modelR.textContent = `${info.model || "laya"} · ${info.runtime || "local"}`;
+    } catch (err) {
+      showError(`Laya: ${err.message}`);
+      ui.start.disabled = false;
+      return;
+    }
+  }
   const seed = Number(ui.seed.value) || 42;
   const gravityMs = Number(ui.gravity.value);
   const speedup = SPEEDUPS[ui.speedup.value] || SPEEDUPS.normal;

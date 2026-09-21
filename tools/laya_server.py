@@ -27,9 +27,15 @@ directly from the browser; browsers allow https pages to reach http://localhost.
 import argparse
 import json
 import platform
+import socket
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+class ThreadingHTTPServer6(ThreadingHTTPServer):
+    address_family = socket.AF_INET6
 
 DEFAULT_MODELS = {
     "mlx": "aac6fef/laya-mlx",
@@ -66,12 +72,18 @@ def make_handler(agent, runtime_name, model_id, verbose):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
-            self._cors()
             self.end_headers()
             try:
                 self.wfile.write(body)
             except BrokenPipeError:
                 pass  # the page gave up on this move (piece landed first)
+
+        def end_headers(self):
+            # Every response carries the CORS headers, including the error pages
+            # BaseHTTPRequestHandler writes itself, so the browser's preflight
+            # never sees a reply without them.
+            self._cors()
+            super().end_headers()
 
         def _cors(self):
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -81,9 +93,8 @@ def make_handler(agent, runtime_name, model_id, verbose):
             # Chrome's Private Network Access preflight for https -> http://localhost
             self.send_header("Access-Control-Allow-Private-Network", "true")
 
-        def do_OPTIONS(self):
+        def do_OPTIONS(self):  # CORS preflight, any path
             self.send_response(204)
-            self._cors()
             self.end_headers()
 
         def do_GET(self):
@@ -144,10 +155,29 @@ def main():
     # Warm up once so the first real decision is not the slow one.
     agent.system_one("warm up", {"q": {"type": "noul", "instructions": "Is this a warm-up?"}})
 
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(agent, runtime_name, model_id, args.verbose))
-    print("Laya server listening on http://%s:%d  (POST /v1/systemone)" % (args.host, args.port), flush=True)
+    handler = make_handler(agent, runtime_name, model_id, args.verbose)
+    servers = []
+    hosts = [args.host]
+    # "localhost" resolves to ::1 on some machines and 127.0.0.1 on others, so the
+    # default binds both loopback addresses; anything else binds what was asked.
+    if args.host in ("127.0.0.1", "localhost"):
+        hosts = ["127.0.0.1", "::1"]
+    for host in hosts:
+        try:
+            server = ThreadingHTTPServer6((host, args.port), handler) if ":" in host else ThreadingHTTPServer((host, args.port), handler)
+        except OSError as error:
+            if host == "::1":
+                continue  # no IPv6 loopback, fine
+            print("Cannot listen on %s:%d: %s" % (host, args.port, error), file=sys.stderr)
+            print("Another program is probably using port %d. Run with --port 8766 and enter http://localhost:8766 on the page." % args.port, file=sys.stderr)
+            return 1
+        servers.append(server)
+    for server in servers[1:]:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    print("Laya server listening on http://localhost:%d  (POST /v1/systemone; %s)" % (args.port, ", ".join(hosts[: len(servers)])), flush=True)
+    print("Now open the battle page, pick 'Laya (local, open weights)' and press Start.", flush=True)
     try:
-        server.serve_forever()
+        servers[0].serve_forever()
     except KeyboardInterrupt:
         pass
     return 0
