@@ -1,7 +1,7 @@
 {
   "state": {
     "game": {
-      "rules": "Standard Tetris. Board is 10 columns wide and 20 rows tall. Rows fill left to right; a full row disappears. The game is lost when the stack reaches the top.",
+      "rules": "Standard Tetris. The board is 10 columns wide and 20 rows tall. You control the falling piece one move at a time, like a player at the keyboard: move left, move right, rotate, move down, or drop. Gravity pulls the piece down one row at a time while you decide, and it locks shortly after it rests on the stack. A full row disappears. The game is lost when the stack reaches the top. This is a versus match: cleared lines attack the opponent.",
       "board_rows_top_to_bottom": [
         "..........",
         "..........",
@@ -11,8 +11,8 @@
         "..........",
         "..........",
         "..........",
-        "..........",
-        "..........",
+        "....@.....",
+        "...@@@....",
         "..........",
         "..........",
         "..........",
@@ -24,7 +24,7 @@
         "#######.#.",
         "########.#"
       ],
-      "legend": "# is a filled cell, . is an empty cell. The first row is the top of the board.",
+      "legend": "# is the stack, @ is the falling piece you control, . is empty. The first row is the top of the board.",
       "column_heights_left_to_right": [
         4,
         4,
@@ -40,518 +40,99 @@
       "stack_height": "low",
       "holes_in_stack": "three or more holes",
       "surface": "slightly uneven",
-      "current_piece": "T",
+      "falling_piece": {
+        "shape": "T",
+        "position": "columns 4-6",
+        "fall": "6 rows above where it would land",
+        "rotation": "1 of 4"
+      },
       "next_piece": "I",
       "lines_cleared_so_far": 12
     }
   },
   "model": "jev-latest",
   "questions": {
-    "placement": {
+    "move": {
       "type": "choice",
       "instructions": {
-        "question": "Which placement of `game.current_piece` should the player choose? Each option describes the board after that placement.",
-        "priorities": [
-          "Clearing lines is good. Clearing more lines at once is better.",
-          "Do not create holes. A placement with holes_created of none beats one that creates holes, unless the one with holes clears far more lines or the stack is dangerously high.",
-          "Keep the stack low. Prefer a lower stack_height_after and a height_change that does not grow the stack.",
-          "Keep the surface flat. Prefer surface_after of flat over slightly uneven, bumpy, or very jagged.",
-          "One deep well is acceptable because the next I piece can fill it. Several deep wells are bad.",
-          "When the stack is dangerously high, survival matters more than a clean surface.",
-          "`how` says whether the piece drops straight down, tucks sideways under an overhang, or spins into a gap. All three are ordinary moves; judge each option by its outcome, not by how it gets there."
+        "question": "Which move should the player make now with `game.falling_piece`? Each option says where the piece would be after the move and what the board would look like if it were dropped from there.",
+        "objective": [
+          "Survive as long as possible and clear as many lines as possible.",
+          "In versus mode every line you clear is pushed onto the opponent's board as a garbage row, and the first player whose stack reaches the top loses.",
+          "The piece keeps falling while you think, so a move that is not made soon may stop being possible."
         ]
       },
       "criteria": {
-        "p0": {
-          "where": "columns 1-3",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "none",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by one row",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
+        "left": {
+          "move": "move one column to the left",
+          "piece_after": "columns 3-5, 6 rows above where it would land",
+          "landing": {
+            "where": "columns 3-5",
+            "lines_cleared": "none",
+            "holes_created": "none",
+            "holes_uncovered": "none",
+            "stack_height_after": "low",
+            "height_change": "stack grows by one row",
+            "surface_after": "bumpy",
+            "wells_after": "no deep wells"
+          }
         },
-        "p1": {
-          "where": "columns 2-4",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "none",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by one row",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
+        "right": {
+          "move": "move one column to the right",
+          "piece_after": "columns 5-7, 5 rows above where it would land",
+          "landing": {
+            "where": "columns 5-7",
+            "lines_cleared": "none",
+            "holes_created": "three or more holes",
+            "holes_uncovered": "none",
+            "stack_height_after": "low",
+            "height_change": "stack grows by several rows",
+            "surface_after": "slightly uneven",
+            "wells_after": "no deep wells"
+          }
         },
-        "p2": {
-          "where": "columns 3-5",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "none",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by one row",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
+        "rotate": {
+          "move": "rotate clockwise",
+          "piece_after": "columns 4-5, 5 rows above where it would land",
+          "landing": {
+            "where": "columns 4-5",
+            "lines_cleared": "none",
+            "holes_created": "one hole",
+            "holes_uncovered": "none",
+            "stack_height_after": "low",
+            "height_change": "stack grows by several rows",
+            "surface_after": "bumpy",
+            "wells_after": "no deep wells"
+          }
         },
-        "p3": {
-          "where": "columns 4-6",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "one hole",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by one row",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
+        "down": {
+          "move": "move down one row",
+          "piece_after": "columns 4-6, 5 rows above where it would land",
+          "landing": {
+            "where": "columns 4-6",
+            "lines_cleared": "none",
+            "holes_created": "one hole",
+            "holes_uncovered": "none",
+            "stack_height_after": "low",
+            "height_change": "stack grows by one row",
+            "surface_after": "slightly uneven",
+            "wells_after": "no deep wells"
+          }
         },
-        "p4": {
-          "where": "columns 5-7",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "three or more holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p5": {
-          "where": "columns 6-8",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "two holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p6": {
-          "where": "columns 7-9",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "three or more holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "one deep well at column 10"
-        },
-        "p7": {
-          "where": "columns 7-9",
-          "how": "slides sideways under an overhang before it lands (a tuck)",
-          "lines_cleared": "none",
-          "holes_created": "none",
-          "holes_uncovered": "three or more holes",
-          "stack_height_after": "low",
-          "height_change": "stack does not get taller",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p8": {
-          "where": "columns 8-10",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "three or more holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p9": {
-          "where": "columns 8-10",
-          "how": "slides sideways under an overhang before it lands (a tuck)",
-          "lines_cleared": "none",
-          "holes_created": "none",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack does not get taller",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p10": {
-          "where": "columns 1-2",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "one hole",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
-        },
-        "p11": {
-          "where": "columns 2-3",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "one hole",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "one deep well at column 1"
-        },
-        "p12": {
-          "where": "columns 3-4",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "one hole",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
-        },
-        "p13": {
-          "where": "columns 4-5",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "one hole",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
-        },
-        "p14": {
-          "where": "columns 5-6",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "two holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p15": {
-          "where": "columns 6-7",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "one hole",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p16": {
-          "where": "columns 7-8",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "one hole",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
-        },
-        "p17": {
-          "where": "columns 8-9",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "three or more holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "one deep well at column 10"
-        },
-        "p18": {
-          "where": "columns 8-9",
-          "how": "rotates into the gap at the last moment (a spin)",
-          "lines_cleared": "none",
-          "holes_created": "none",
-          "holes_uncovered": "three or more holes",
-          "stack_height_after": "low",
-          "height_change": "stack does not get taller",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p19": {
-          "where": "columns 9-10",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "two holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack does not get taller",
-          "surface_after": "flat",
-          "wells_after": "no deep wells"
-        },
-        "p20": {
-          "where": "columns 1-3",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "two holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by one row",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p21": {
-          "where": "columns 2-4",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "two holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by one row",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
-        },
-        "p22": {
-          "where": "columns 3-5",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "two holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by one row",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
-        },
-        "p23": {
-          "where": "columns 4-6",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "three or more holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by one row",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p24": {
-          "where": "columns 5-7",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "two holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by one row",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p25": {
-          "where": "columns 6-8",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "three or more holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p26": {
-          "where": "columns 6-8",
-          "how": "slides sideways under an overhang before it lands (a tuck)",
-          "lines_cleared": "none",
-          "holes_created": "none",
-          "holes_uncovered": "three or more holes",
-          "stack_height_after": "low",
-          "height_change": "stack does not get taller",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p27": {
-          "where": "columns 7-9",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "three or more holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "one deep well at column 10"
-        },
-        "p28": {
-          "where": "columns 7-9",
-          "how": "slides sideways under an overhang before it lands (a tuck)",
-          "lines_cleared": "none",
-          "holes_created": "none",
-          "holes_uncovered": "three or more holes",
-          "stack_height_after": "low",
-          "height_change": "stack does not get taller",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p29": {
-          "where": "columns 8-10",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "three or more holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by one row",
-          "surface_after": "flat",
-          "wells_after": "no deep wells"
-        },
-        "p30": {
-          "where": "columns 8-10",
-          "how": "rotates into the gap at the last moment (a spin)",
-          "lines_cleared": "none",
-          "holes_created": "one hole",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack does not get taller",
-          "surface_after": "flat",
-          "wells_after": "no deep wells"
-        },
-        "p31": {
-          "where": "columns 1-2",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "one hole",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
-        },
-        "p32": {
-          "where": "columns 2-3",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "one hole",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
-        },
-        "p33": {
-          "where": "columns 3-4",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "one hole",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
-        },
-        "p34": {
-          "where": "columns 4-5",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "one hole",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
-        },
-        "p35": {
-          "where": "columns 5-6",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "none",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by one row",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p36": {
-          "where": "columns 6-7",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "three or more holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
-        },
-        "p37": {
-          "where": "columns 7-8",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "one hole",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "no deep wells"
-        },
-        "p38": {
-          "where": "columns 7-8",
-          "how": "rotates into the gap at the last moment (a spin)",
-          "lines_cleared": "none",
-          "holes_created": "none",
-          "holes_uncovered": "three or more holes",
-          "stack_height_after": "low",
-          "height_change": "stack does not get taller",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
-        },
-        "p39": {
-          "where": "columns 8-9",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "two holes",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack grows by several rows",
-          "surface_after": "bumpy",
-          "wells_after": "one deep well at column 10"
-        },
-        "p40": {
-          "where": "columns 8-9",
-          "how": "slides sideways under an overhang before it lands (a tuck)",
-          "lines_cleared": "none",
-          "holes_created": "none",
-          "holes_uncovered": "one hole",
-          "stack_height_after": "low",
-          "height_change": "stack does not get taller",
-          "surface_after": "slightly uneven",
-          "wells_after": "one deep well at column 10"
-        },
-        "p41": {
-          "where": "columns 9-10",
-          "how": "straight drop from the top",
-          "lines_cleared": "none",
-          "holes_created": "none",
-          "holes_uncovered": "none",
-          "stack_height_after": "low",
-          "height_change": "stack does not get taller",
-          "surface_after": "slightly uneven",
-          "wells_after": "no deep wells"
+        "drop": {
+          "move": "drop straight down and lock now",
+          "piece_after": "locked at columns 4-6",
+          "landing": {
+            "where": "columns 4-6",
+            "lines_cleared": "none",
+            "holes_created": "one hole",
+            "holes_uncovered": "none",
+            "stack_height_after": "low",
+            "height_change": "stack grows by one row",
+            "surface_after": "slightly uneven",
+            "wells_after": "no deep wells"
+          }
         }
-      }
-    },
-    "strategy": {
-      "type": "choice",
-      "instructions": "Looking at `game`, which strategy fits the current situation best for the next few pieces?",
-      "criteria": {
-        "build_clean": "The stack is low and tidy. Keep building a flat surface and wait for a chance to clear several lines at once.",
-        "clear_lines": "Lines can be cleared soon. Take clears as they come and keep the stack from growing.",
-        "repair_surface": "The surface is jagged or has holes. Prefer placements that smooth it out or uncover holes, even without clearing lines.",
-        "survive": "The stack is close to the top. Take any placement that lowers or does not raise the stack, even if it is ugly."
-      }
-    },
-    "board_health": {
-      "type": "score",
-      "instructions": "How healthy is the stack in `game` for a Tetris player who wants to keep playing for a long time?",
-      "criteria": [
-        "Clean: low, flat stack with no holes",
-        "Fine: some unevenness or a hole or two, plenty of room",
-        "Rough: several holes or a jagged surface, room is shrinking",
-        "Critical: stack near the top, the game may be lost within a few pieces"
-      ]
-    },
-    "next_piece_fits": {
-      "type": "noul",
-      "instructions": "Given `game.column_heights_left_to_right` and `game.surface`, is there an obvious clean spot for `game.next_piece` after this move, without creating holes?",
-      "criteria": {
-        "true": "A clean spot is easy to see.",
-        "false": "The next piece will be awkward to place."
       }
     }
   }

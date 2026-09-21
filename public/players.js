@@ -1,9 +1,10 @@
-// The two contestants of the battle page. Each player gets identical
-// information (the board plus the same described placement options) and
-// must return one option id. Both go through the local proxy in server.mjs.
+// The contestants of the battle page. Each player gets identical information
+// (the board with the falling piece, and the moves possible right now, each
+// described by its outcome) and must return one move id. All go through the
+// local proxy in server.mjs except Laya, which runs on the visitor's machine.
 
-import { describePlacement, boardToText, describeHeight, describeHoles, describeSurface } from "./tetris.js";
-import { buildRequest, askJev, pickPlacement } from "./jev.js";
+import { describeAction, boardWithPiece, describeHeight, describeHoles, describeSurface, describeFall, PIECES } from "./tetris.js";
+import { buildRequest, askJev, pickAction, RULES, OBJECTIVE } from "./jev.js";
 
 export const JEV_PRICE = { input: 0.042 / 1e6, output: 0 };
 export const HAIKU_MODEL = "claude-haiku-4-5";
@@ -16,12 +17,10 @@ export function createJevPlayer(apiKey) {
     name: "Jev",
     short: "Jev",
     model: "jev-latest",
-    async decide(gameInfo, placements, signal) {
-      const request = buildRequest(gameInfo, placements);
-      // The battle only needs the placement Choice; drop the extra questions.
-      request.questions = { placement: request.questions.placement };
+    async act(stepInfo, actions, signal) {
+      const request = buildRequest(stepInfo, actions);
       const { response, latencyMs } = await askJev(request, apiKey, { signal, maxAttempts: 2 });
-      const { chosen, confidence } = pickPlacement(response, placements);
+      const { chosen, confidence } = pickAction(response, actions);
       const usage = response.usage || {};
       return {
         chosen,
@@ -29,67 +28,79 @@ export function createJevPlayer(apiKey) {
         inputTokens: usage.input_tokens || 0,
         outputTokens: usage.output_tokens || 0,
         cost: (usage.input_tokens || 0) * JEV_PRICE.input,
-        note: `confidence ${confidence.toFixed(2)}`,
+        note: chosen ? `confidence ${confidence.toFixed(2)}` : `invalid reply ${JSON.stringify(response.answers?.move?.choice)}`,
       };
     },
   };
 }
 
-// ---- Claude Haiku ---------------------------------------------------------------
+// ---- Shared prompt for the chat models ------------------------------------------
+// The same facts Jev gets, as one JSON document, plus the same objective.
 
-const HAIKU_SYSTEM = [
-  "You are playing Tetris in real time. Each turn you get the board and a list of every legal placement for the current piece, each described by its outcome.",
-  "Pick the best placement. Good play: clear lines (more at once is better), never create holes unless every option does, keep the stack low and the surface flat, avoid several deep wells.",
-  "The piece is falling while you think, so decide immediately by calling the place_piece tool.",
+const CHAT_SYSTEM = [
+  "You are playing Tetris in real time, one move at a time, like a player at the keyboard.",
+  RULES,
+  ...OBJECTIVE,
+  "Each turn you get the board with the falling piece marked @ and the moves possible right now, each described by where the piece would be afterwards and what the board would look like if it were dropped from there.",
+  "Decide immediately by calling the make_move tool with one of the offered move ids.",
 ].join(" ");
 
-export function buildHaikuPrompt(gameInfo, placements) {
-  const { board, piece, nextPiece, stats, linesCleared } = gameInfo;
+export function buildChatPrompt(stepInfo, actions) {
+  const { board, piece, state, nextPiece, stats, linesCleared, rowsToFall } = stepInfo;
   const options = {};
-  for (const p of placements) options[p.id] = describePlacement(p);
+  for (const a of actions) options[a.id] = describeAction(a);
   return JSON.stringify(
     {
-      board_rows_top_to_bottom: boardToText(board),
-      legend: "# filled, . empty",
+      board_rows_top_to_bottom: boardWithPiece(board, piece, state),
+      legend: "# stack, @ falling piece, . empty",
       column_heights_left_to_right: stats.heights,
       stack_height: describeHeight(stats.maxHeight),
       holes_in_stack: describeHoles(stats.holes),
       surface: describeSurface(stats.bumpiness),
-      current_piece: piece,
+      falling_piece: { shape: piece, fall: describeFall(rowsToFall), rotation: `${state.rotation + 1} of ${PIECES[piece].length}` },
       next_piece: nextPiece,
       lines_cleared_so_far: linesCleared,
-      options,
+      moves: options,
     },
     null,
     0,
   );
 }
 
-// Forced tool call with an enum of the option ids: the answer is always one
-// of the offered placements, just as Jev's Choice is constrained to them.
-export function buildHaikuTool(placements) {
+function readJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+// ---- Claude Haiku ---------------------------------------------------------------
+// Forced tool call with an enum of the move ids: the answer is always one of
+// the offered moves, just as Jev's Choice is constrained to them.
+
+export function buildHaikuTool(actions) {
   return {
-    name: "place_piece",
-    description: "Choose where to drop the current piece by naming one option id from the options list.",
+    name: "make_move",
+    description: "Make one move with the falling piece by naming one move id from the moves list.",
     input_schema: {
       type: "object",
-      properties: { option_id: { type: "string", enum: placements.map((p) => p.id) } },
-      required: ["option_id"],
+      properties: { move: { type: "string", enum: actions.map((a) => a.id) } },
+      required: ["move"],
       additionalProperties: false,
     },
     strict: true,
   };
 }
 
-export function parseHaikuChoice(message, placements) {
-  const byId = new Map(placements.map((p) => [p.id, p]));
+export function parseHaikuChoice(message, actions) {
+  const byId = new Map(actions.map((a) => [a.id, a]));
   const blocks = Array.isArray(message?.content) ? message.content : [];
   for (const b of blocks) {
-    if (b.type === "tool_use" && b.name === "place_piece" && byId.has(b.input?.option_id)) return byId.get(b.input.option_id);
+    if (b.type === "tool_use" && b.name === "make_move" && byId.has(b.input?.move)) return byId.get(b.input.move);
   }
-  // Fallback for a plain-text reply naming an id.
-  const text = blocks.filter((b) => b.type === "text").map((b) => b.text).join(" ");
-  for (const m of text.match(/\bp\d+\b/g) || []) if (byId.has(m)) return byId.get(m);
+  const text = blocks.filter((b) => b.type === "text").map((b) => b.text).join(" ").toLowerCase();
+  for (const id of byId.keys()) if (new RegExp(`\\b${id}\\b`).test(text)) return byId.get(id);
   return null;
 }
 
@@ -98,14 +109,14 @@ export function createHaikuPlayer(apiKey, { endpoint = "api/anthropic" } = {}) {
     name: "Claude Haiku 4.5",
     short: "Haiku 4.5",
     model: HAIKU_MODEL,
-    async decide(gameInfo, placements, signal) {
+    async act(stepInfo, actions, signal) {
       const body = {
         model: HAIKU_MODEL,
         max_tokens: 64,
-        system: HAIKU_SYSTEM,
-        tools: [buildHaikuTool(placements)],
-        tool_choice: { type: "tool", name: "place_piece" },
-        messages: [{ role: "user", content: buildHaikuPrompt(gameInfo, placements) }],
+        system: CHAT_SYSTEM,
+        tools: [buildHaikuTool(actions)],
+        tool_choice: { type: "tool", name: "make_move" },
+        messages: [{ role: "user", content: buildChatPrompt(stepInfo, actions) }],
       };
       const started = performance.now();
       const res = await fetch(endpoint, {
@@ -116,74 +127,61 @@ export function createHaikuPlayer(apiKey, { endpoint = "api/anthropic" } = {}) {
       });
       const latencyMs = performance.now() - started;
       const text = await res.text();
-      let json = null;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        json = null;
-      }
+      const json = readJson(text);
       if (!res.ok) {
-        const message = json?.error?.message || text || `HTTP ${res.status}`;
-        const err = new Error(message);
+        const err = new Error(json?.error?.message || text || `HTTP ${res.status}`);
         err.status = res.status;
         throw err;
       }
-      const chosen = parseHaikuChoice(json, placements);
-      const answer = chosen ? chosen.id : JSON.stringify(json.content || json).slice(0, 60);
+      const chosen = parseHaikuChoice(json, actions);
       const usage = json.usage || {};
       const inputTokens = usage.input_tokens || 0;
       const outputTokens = usage.output_tokens || 0;
       return {
-        chosen, // null when the reply named no valid option
+        chosen, // null when the reply named no valid move
         latencyMs,
         inputTokens,
         outputTokens,
         cost: inputTokens * HAIKU_PRICE.input + outputTokens * HAIKU_PRICE.output,
-        note: chosen ? `picked ${answer}` : `invalid reply ${answer}`,
+        note: chosen ? `picked ${chosen.id}` : `invalid reply ${JSON.stringify(json.content || json).slice(0, 60)}`,
       };
     },
   };
 }
 
 // ---- Gemini -------------------------------------------------------------------------
-// Same prompt and option list as Haiku; the answer is a forced function call
-// whose option_id is an enum of the offered placements.
+// Same prompt and move list as Haiku; the answer is a forced function call
+// whose move is an enum of the offered ids.
 
 export const GEMINI_MODEL = "gemini-3.8-flash";
 // ai.google.dev/gemini-api/docs/pricing, paid tier through 2026-12-31: $0.75 in, $3.75 out (incl. thinking) per MTok.
 export const GEMINI_PRICE = { input: 0.75 / 1e6, output: 3.75 / 1e6 };
 
-const GEMINI_SYSTEM = [
-  "You are playing Tetris in real time. Each turn you get the board and a list of every legal placement for the current piece, each described by its outcome.",
-  "Pick the best placement. Good play: clear lines (more at once is better), never create holes unless every option does, keep the stack low and the surface flat, avoid several deep wells.",
-  "The piece is falling while you think, so decide immediately by calling place_piece.",
-].join(" ");
-
-export function buildGeminiTool(placements) {
+export function buildGeminiTool(actions) {
   return {
     functionDeclarations: [
       {
-        name: "place_piece",
-        description: "Choose where to drop the current piece by naming one option id from the options list.",
+        name: "make_move",
+        description: "Make one move with the falling piece by naming one move id from the moves list.",
         parameters: {
           type: "OBJECT",
-          properties: { option_id: { type: "STRING", enum: placements.map((p) => p.id) } },
-          required: ["option_id"],
+          properties: { move: { type: "STRING", enum: actions.map((a) => a.id) } },
+          required: ["move"],
         },
       },
     ],
   };
 }
 
-export function parseGeminiChoice(response, placements) {
-  const byId = new Map(placements.map((p) => [p.id, p]));
+export function parseGeminiChoice(response, actions) {
+  const byId = new Map(actions.map((a) => [a.id, a]));
   const parts = response?.candidates?.[0]?.content?.parts || [];
   for (const part of parts) {
-    const id = part.functionCall?.name === "place_piece" ? part.functionCall.args?.option_id : null;
+    const id = part.functionCall?.name === "make_move" ? part.functionCall.args?.move : null;
     if (id && byId.has(id)) return byId.get(id);
   }
-  const text = parts.map((p) => p.text || "").join(" ");
-  for (const m of text.match(/\bp\d+\b/g) || []) if (byId.has(m)) return byId.get(m);
+  const text = parts.map((p) => p.text || "").join(" ").toLowerCase();
+  for (const id of byId.keys()) if (new RegExp(`\\b${id}\\b`).test(text)) return byId.get(id);
   return null;
 }
 
@@ -192,13 +190,13 @@ export function createGeminiPlayer(apiKey, { endpoint = "api/gemini", model = GE
     name: "Gemini 3.8 Flash",
     short: "Gemini 3.8",
     model,
-    async decide(gameInfo, placements, signal) {
+    async act(stepInfo, actions, signal) {
       const body = {
         model,
-        systemInstruction: { parts: [{ text: GEMINI_SYSTEM }] },
-        contents: [{ role: "user", parts: [{ text: buildHaikuPrompt(gameInfo, placements) }] }],
-        tools: [buildGeminiTool(placements)],
-        toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["place_piece"] } },
+        systemInstruction: { parts: [{ text: CHAT_SYSTEM }] },
+        contents: [{ role: "user", parts: [{ text: buildChatPrompt(stepInfo, actions) }] }],
+        tools: [buildGeminiTool(actions)],
+        toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["make_move"] } },
         generationConfig: { maxOutputTokens: 256, thinkingConfig: { thinkingLevel: "low" } },
       };
       const started = performance.now();
@@ -210,18 +208,13 @@ export function createGeminiPlayer(apiKey, { endpoint = "api/gemini", model = GE
       });
       const latencyMs = performance.now() - started;
       const text = await res.text();
-      let json = null;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        json = null;
-      }
+      const json = readJson(text);
       if (!res.ok) {
         const err = new Error(json?.error?.message || text || `HTTP ${res.status}`);
         err.status = res.status;
         throw err;
       }
-      const chosen = parseGeminiChoice(json, placements);
+      const chosen = parseGeminiChoice(json, actions);
       const u = json.usageMetadata || {};
       const inputTokens = u.promptTokenCount || 0;
       const outputTokens = (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0);
@@ -241,59 +234,48 @@ export function createGeminiPlayer(apiKey, { endpoint = "api/gemini", model = GE
 // Laya is an open-weight typed-decision model (Convai Innovations; MLX port by
 // mizorewww as laya-mlx). It runs on the visitor's machine behind
 // tools/laya_server.py and answers the same TypeSafe-shaped request as Jev.
-// Its context is small (512 tokens, with about 190 for the question and its
-// options, at most 48 per option), so instead of Jev's Choice over every
-// placement it gets a one-paragraph description of the board plus the top
-// candidates pre-ranked by the classic heuristic in code, each described in a
-// dozen words with the location first.
+// Its context is small (512 tokens, about 190 for the question and its
+// options, at most 48 per option), so it gets a one-paragraph description of
+// the board and the same five moves described in a dozen words each.
 
 export const LAYA_DEFAULT_ENDPOINT = "http://localhost:8765";
-export const LAYA_CANDIDATES = 6;
 
 const PIECE_WORDS = { I: "an I bar", O: "an O square", T: "a T", S: "an S", Z: "a Z", J: "a J", L: "an L" };
 
-export function describeBoardForLaya({ piece, nextPiece, stats }) {
+export function describeBoardForLaya({ piece, nextPiece, stats, rowsToFall, state }) {
   const holes = stats.holes === 0 ? "no holes" : `${describeHoles(stats.holes)}`.replace("three or more holes", "several holes");
-  const wells = stats.wells.length === 1
-    ? ` Column ${stats.wells[0].column + 1} is a deep well.`
-    : stats.wells.length > 1
-      ? ` There are ${stats.wells.length} deep wells.`
-      : "";
+  const xs = PIECES[piece][state.rotation].cells.map(([cx]) => state.x + cx + 1);
+  const span = Math.min(...xs) === Math.max(...xs) ? `column ${xs[0]}` : `columns ${Math.min(...xs)}-${Math.max(...xs)}`;
   return (
-    `Tetris. The stack is ${describeHeight(stats.maxHeight)} and ${describeSurface(stats.bumpiness)} with ${holes}.` +
-    `${wells} The falling piece is ${PIECE_WORDS[piece] || piece}. Next piece: ${nextPiece}.`
+    `Tetris. The stack is ${describeHeight(stats.maxHeight)} and ${describeSurface(stats.bumpiness)} with ${holes}. ` +
+    `The falling piece is ${PIECE_WORDS[piece] || piece} in ${span}, ${describeFall(rowsToFall)}. Next piece: ${nextPiece}.`
   );
 }
 
-export function describePlacementForLaya(p) {
-  const d = describePlacement(p);
-  const xs = p.cells.map((c) => c[0]);
-  const width = Math.max(...xs) - Math.min(...xs) + 1;
-  const where = width === 1 ? `${d.where} vertical` : width === 4 ? `${d.where} flat` : d.where;
-  const parts = [p.linesCleared ? `clears ${d.lines_cleared.replace(" (a Tetris)", "")}` : "no lines cleared"];
-  parts.push(p.holesCreated ? `creates ${d.holes_created}` : "no holes");
-  if (p.heightDelta >= 2) parts.push("stack grows by several rows");
-  else if (p.heightDelta === 1) parts.push("stack grows by one row");
-  else if (p.linesCleared > 0 && p.heightDelta < 0) parts.push("stack gets lower");
-  else parts.push(`surface ${d.surface_after}`);
-  return `${where}: ${parts.join(", ")}`;
+export function describeActionForLaya(a) {
+  const d = describeAction(a);
+  const l = a.landing;
+  const parts = [l.linesCleared ? `clears ${d.landing.lines_cleared.replace(" (a Tetris)", "")}` : "no lines cleared"];
+  parts.push(l.holesCreated ? `creates ${d.landing.holes_created}` : "no holes");
+  if (l.heightDelta >= 2) parts.push("stack grows by several rows");
+  else if (l.heightDelta === 1) parts.push("stack grows by one row");
+  else if (l.linesCleared > 0 && l.heightDelta < 0) parts.push("stack gets lower");
+  else parts.push(`surface ${d.landing.surface_after}`);
+  const verb = a.action === "drop" ? "drop now" : a.action === "rotate" ? "rotate" : `move ${a.action}`;
+  return `${verb}, lands ${d.landing.where}: ${parts.join(", ")}`;
 }
 
-export function buildLayaRequest(gameInfo, placements, limit = LAYA_CANDIDATES) {
-  const candidates = placements.slice().sort((a, b) => b.heuristic - a.heuristic).slice(0, limit);
+export function buildLayaRequest(stepInfo, actions) {
   const criteria = {};
-  for (const p of candidates) criteria[p.id] = describePlacementForLaya(p);
+  for (const a of actions) criteria[a.id] = describeActionForLaya(a);
   return {
-    candidates,
-    request: {
-      state: describeBoardForLaya(gameInfo),
-      model: "laya",
-      questions: {
-        placement: {
-          type: "choice",
-          instructions: "Pick the best placement: clear lines, avoid holes, keep the stack low and flat.",
-          criteria,
-        },
+    state: describeBoardForLaya(stepInfo),
+    model: "laya",
+    questions: {
+      move: {
+        type: "choice",
+        instructions: "Pick the next move for the falling piece. Aim to survive and clear lines.",
+        criteria,
       },
     },
   };
@@ -314,12 +296,7 @@ export async function checkLayaServer(endpoint) {
         "the terminal running the server shows what it received.",
     );
   }
-  let info = null;
-  try {
-    info = await res.json();
-  } catch {
-    info = null;
-  }
+  const info = readJson(await res.text());
   if (!res.ok || !info || info.ok !== true || !info.runtime) {
     throw new Error(
       `${base} answered, but not like tools/laya_server.py (HTTP ${res.status}). ` +
@@ -329,19 +306,19 @@ export async function checkLayaServer(endpoint) {
   return info;
 }
 
-export function createLayaPlayer({ endpoint = LAYA_DEFAULT_ENDPOINT, candidates = LAYA_CANDIDATES } = {}) {
+export function createLayaPlayer({ endpoint = LAYA_DEFAULT_ENDPOINT } = {}) {
   const base = endpoint.replace(/\/+$/, "");
   return {
     name: "Laya",
     short: "Laya",
     model: "laya (local)",
     endpoint: base,
-    async decide(gameInfo, placements, signal) {
-      const { candidates: shortlist, request } = buildLayaRequest(gameInfo, placements, candidates);
-      if (shortlist.length === 1) {
+    async act(stepInfo, actions, signal) {
+      if (actions.length === 1) {
         // Laya's choice head needs at least two options.
-        return { chosen: shortlist[0], latencyMs: 0, inputTokens: 0, outputTokens: 0, cost: 0, note: "only one option" };
+        return { chosen: actions[0], latencyMs: 0, inputTokens: 0, outputTokens: 0, cost: 0, note: "only one move" };
       }
+      const request = buildLayaRequest(stepInfo, actions);
       const started = performance.now();
       const res = await fetch(`${base}/v1/systemone`, {
         method: "POST",
@@ -351,18 +328,13 @@ export function createLayaPlayer({ endpoint = LAYA_DEFAULT_ENDPOINT, candidates 
       });
       const latencyMs = performance.now() - started;
       const text = await res.text();
-      let json = null;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        json = null;
-      }
+      const json = readJson(text);
       if (!res.ok) {
         const err = new Error(json?.detail?.message || text || `HTTP ${res.status}`);
         err.status = res.status;
         throw err;
       }
-      const { chosen, confidence } = pickPlacement(json, shortlist);
+      const { chosen, confidence } = pickAction(json, actions);
       const usage = json.usage || {};
       return {
         chosen,

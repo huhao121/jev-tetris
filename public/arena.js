@@ -8,8 +8,7 @@ import {
   PIECES,
   PIECE_COLORS,
   emptyBoard,
-  enumeratePlacements,
-  findPath,
+  enumerateActions,
   stepPiece,
   SPAWN_X,
   lockPiece,
@@ -22,7 +21,6 @@ import {
   addGarbage,
   GARBAGE,
   scoreForLines,
-  describePlacement,
 } from "./tetris.js";
 
 export const SPEEDUPS = {
@@ -32,6 +30,11 @@ export const SPEEDUPS = {
   brutal: { everyMs: 10_000, factor: 0.8 },
 };
 export const MIN_GRAVITY_MS = 40;
+// A piece resting on the stack locks after this long unless it moves down again,
+// the same grace a human player gets to slide or rotate it.
+export const LOCK_DELAY_MS = 400;
+// Without gravity (lockstep mode) a piece that is never dropped is dropped for the player after this many moves.
+export const MAX_MOVES_PER_PIECE = 60;
 export { SPAWN_X };
 
 // ?present strips a page down to the boards and the clock for recordings.
@@ -86,7 +89,8 @@ export function freshStats() {
     latency: 0,
     minLatency: Infinity,
     maxLatency: 0,
-    missed: 0,
+    moves: 0,
+    late: 0, // answers that arrived after the piece had locked
     invalid: 0,
     errors: 0,
     inputTokens: 0,
@@ -244,6 +248,7 @@ export function drawSide(side) {
 export function modelStatsRows(side) {
   const s = side.stats;
   const avg = s.calls ? fmtMs(s.latency / s.calls) : "–";
+  const perPiece = side.pieces ? (s.moves / side.pieces).toFixed(1) : "–";
   return PRESENT
     ? [
         ["Lines", side.lines],
@@ -251,7 +256,7 @@ export function modelStatsRows(side) {
         ["Sent", s.sent],
         ["Received", s.received],
         ["Latency", avg],
-        ["Missed", s.missed],
+        ["Moves/pc", perPiece],
         ["In tok", s.inputTokens.toLocaleString()],
         ["Out tok", s.outputTokens.toLocaleString()],
         ["Cost", fmtUsd(s.cost)],
@@ -266,12 +271,12 @@ export function modelStatsRows(side) {
         ["Sent", s.sent],
         ["Received", s.received],
         ["Avg latency", avg],
-        ["Missed", s.missed],
+        ["Moves / piece", perPiece],
+        ["Late", s.late],
         ["Invalid", s.invalid + s.errors],
         ["Tokens in", s.inputTokens.toLocaleString()],
         ["Tokens out", s.outputTokens.toLocaleString()],
         ["Cost", fmtUsd(s.cost)],
-        ["Per move", s.calls ? fmtUsd(s.cost / s.calls, 5) : "–"],
       ];
 }
 
@@ -303,7 +308,8 @@ export const modelComparisonRows = [
   ["Garbage received", (s) => s.stats.received],
   ["Avg latency", avgLatency],
   ["Min–max ms", latencyRange],
-  ["Missed", (s) => s.stats.missed],
+  ["Moves / piece", (s) => (s.pieces ? (s.stats.moves / s.pieces).toFixed(1) : "–")],
+  ["Late answers", (s) => s.stats.late],
   ["Invalid", (s) => s.stats.invalid + s.stats.errors],
   ["Model calls", (s) => s.stats.calls],
   ["Tokens in", (s) => s.stats.inputTokens.toLocaleString()],
@@ -398,9 +404,9 @@ export function judgeRound(L, R, { garbage, timeUp = false }) {
   } else if (L.lines !== R.lines) {
     winner = L.lines > R.lines ? L : R;
     reason = `${winner.player.name} wins on lines${timeUp ? " at the time limit" : ""}`;
-  } else if (L.stats.missed !== R.stats.missed) {
-    winner = L.stats.missed < R.stats.missed ? L : R;
-    reason = `${winner.player.name} wins on fewer missed deadlines`;
+  } else if (L.stats.late !== R.stats.late) {
+    winner = L.stats.late < R.stats.late ? L : R;
+    reason = `${winner.player.name} wins on fewer late answers`;
   } else {
     reason = timeUp ? "Draw at the time limit" : "Draw";
   }
@@ -422,6 +428,14 @@ export function markTopOut(side, elapsedMs) {
 
 // ---- Real-time loop for a model-driven side ------------------------------------------------------
 // ctx: { signal, lockstep, gravityNow(), garbage, onTopOut(side), onPiece(side), showError(msg) }
+//
+// The model plays like a person at the keyboard. For every piece two things
+// run side by side: gravity, which pulls the piece down one row per tick and
+// locks it LOCK_DELAY_MS after it comes to rest, and the decision loop, which
+// sends the current state, applies the move that comes back (left, right,
+// rotate, down or drop), and immediately asks again. Answers that arrive after
+// the piece has locked are counted as late and ignored. In lockstep mode there
+// is no gravity: the piece only moves when the model says so.
 
 export async function runModelSide(side, ctx) {
   const { signal, lockstep, gravityNow } = ctx;
@@ -431,114 +445,101 @@ export async function runModelSide(side, ctx) {
       return;
     }
     const piece = side.current;
-    const spawn = PIECES[piece][0];
-    if (collides(side.board, spawn.cells, SPAWN_X, 0)) {
+    if (collides(side.board, PIECES[piece][0].cells, SPAWN_X, 0)) {
       ctx.onTopOut(side);
       return;
     }
-    const placements = enumeratePlacements(side.board, piece);
-    if (placements.length === 0) {
-      ctx.onTopOut(side);
-      return;
-    }
-    side.active = { piece, rotation: 0, x: SPAWN_X, y: 0 };
+    const a = { piece, rotation: 0, x: SPAWN_X, y: 0 };
+    side.active = a;
     side.target = null;
     drawSide(side);
 
-    // Ask the model right away; the piece falls while we wait.
-    const gameInfo = { board: side.board, piece, nextPiece: side.next, stats: boardStats(side.board), linesCleared: side.lines };
-    const askedAt = performance.now();
-    let decision = null;
-    let settled = false;
-    let failed = false;
-    const pending = side.player
-      .decide(gameInfo, placements, signal)
-      .then((d) => {
-        decision = d;
-      })
-      .catch((err) => {
-        if (!signal.aborted) {
-          failed = true;
+    let locked = false;
+    let landed = null;
+    let moves = 0;
+    let resolveLock;
+    const lockedPromise = new Promise((r) => {
+      resolveLock = r;
+    });
+    const lock = () => {
+      if (locked) return;
+      locked = true;
+      landed = { rotation: a.rotation, x: a.x, y: dropY(side.board, PIECES[piece][a.rotation].cells, a.x, a.y) };
+      resolveLock();
+    };
+
+    const decide = async () => {
+      while (!locked && !signal.aborted) {
+        const before = boardStats(side.board);
+        const actions = enumerateActions(side.board, piece, a, before);
+        if (actions.length === 0) return;
+        const rowsToFall = dropY(side.board, PIECES[piece][a.rotation].cells, a.x, a.y) - a.y;
+        const stepInfo = { board: side.board, piece, state: { rotation: a.rotation, x: a.x, y: a.y }, nextPiece: side.next, stats: before, linesCleared: side.lines, versus: ctx.garbage, rowsToFall };
+        let decision;
+        try {
+          decision = await side.player.act(stepInfo, actions, signal);
+        } catch (err) {
+          if (signal.aborted) return;
           side.stats.errors += 1;
           if (side.moveEl) side.moveEl.textContent = `Error: ${err.message}`;
           if (err.status === 401 || err.status === 403) ctx.showError?.(`${side.player.name}: ${err.message}`);
+          await sleep(250);
+          continue;
         }
-      })
-      .finally(() => {
-        settled = true;
-      });
-
-    let outcome = null; // "decided" | "missed"
-    if (lockstep) {
-      await pending;
-      outcome = decision ? "decided" : "missed";
-    } else {
-      // Gravity loop: one row per gravityNow() until the answer arrives or the piece lands.
-      while (!signal.aborted) {
-        if (settled) {
-          outcome = decision ? "decided" : "missed";
-          break;
-        }
-        await sleep(gravityNow());
         if (signal.aborted) return;
-        if (settled) {
-          outcome = decision ? "decided" : "missed";
-          break;
-        }
-        const a = side.active;
-        if (!collides(side.board, PIECES[a.piece][a.rotation].cells, a.x, a.y + 1)) {
-          a.y += 1;
-          drawSide(side);
-        } else {
-          outcome = "missed";
-          break;
-        }
-      }
-    }
-    if (signal.aborted) return;
-
-    const a = side.active;
-    let landed;
-    if (outcome === "decided" && decision.chosen) {
-      recordDecision(side, decision);
-      const t = decision.chosen;
-      // The piece has been falling while the model thought, so find a route
-      // from where it is now: sideways moves, rotations and drops, which is
-      // what lets it tuck under an overhang or spin into a gap.
-      const path = findPath(side.board, piece, a, { rotation: t.rotation, x: t.x, y: t.y });
-      if (path) {
-        side.target = t.cells;
-        for (const move of path) {
-          if (signal.aborted) return;
-          const next = stepPiece(side.board, piece, a, move);
-          if (!next) break;
-          a.rotation = next.rotation;
-          a.x = next.x;
-          a.y = next.y;
-          drawSide(side);
-          await sleep(move === "down" ? 10 : 18);
-        }
-        landed = { rotation: a.rotation, x: a.x, y: a.y };
-        const d = describePlacement(t);
-        if (side.moveEl) side.moveEl.textContent = `${piece} → ${d.where} in ${Math.round(decision.latencyMs)} ms (${decision.note})`;
-      } else {
-        // Answer came too late for the rotation to fit at this height: lock as is.
-        side.stats.missed += 1;
-        landed = { rotation: a.rotation, x: a.x, y: dropY(side.board, PIECES[piece][a.rotation].cells, a.x, a.y) };
-        if (side.moveEl) side.moveEl.textContent = `${piece}: answer arrived too late to fit (${Math.round(decision.latencyMs)} ms)`;
-      }
-    } else {
-      if (outcome === "decided") {
-        // Model replied but named no valid option.
         recordDecision(side, decision);
-        side.stats.invalid += 1;
-        if (side.moveEl) side.moveEl.textContent = `${piece}: ${decision.note}; piece dropped where it was`;
-      } else {
-        side.stats.missed += 1;
-        if (!failed && side.moveEl) side.moveEl.textContent = `${piece}: no answer before landing (${Math.round(performance.now() - askedAt)} ms); locked in place`;
+        if (locked) {
+          side.stats.late += 1;
+          return;
+        }
+        if (!decision.chosen) {
+          side.stats.invalid += 1;
+          if (side.moveEl) side.moveEl.textContent = `${piece}: ${decision.note}`;
+          continue;
+        }
+        // Gravity may have moved the piece since the state was sent, so apply the
+        // move to where the piece is now; a move that is no longer possible is skipped.
+        const move = decision.chosen.action;
+        side.stats.moves += 1;
+        moves += 1;
+        if (move === "drop") {
+          lock();
+        } else {
+          const next = stepPiece(side.board, piece, a, move === "rotate" ? "rotateCw" : move);
+          if (next) {
+            a.rotation = next.rotation;
+            a.x = next.x;
+            a.y = next.y;
+          }
+        }
+        side.target = null;
+        drawSide(side);
+        renderSideStats(side);
+        if (side.moveEl) side.moveEl.textContent = `${piece}: ${move} in ${Math.round(decision.latencyMs)} ms (${decision.note})`;
+        if (lockstep && !locked && moves >= MAX_MOVES_PER_PIECE) lock();
       }
-      landed = { rotation: a.rotation, x: a.x, y: dropY(side.board, PIECES[piece][a.rotation].cells, a.x, a.y) };
-    }
+    };
+
+    const gravity = async () => {
+      let restingSince = null;
+      while (!locked && !signal.aborted) {
+        await sleep(gravityNow());
+        if (locked || signal.aborted) return;
+        if (!collides(side.board, PIECES[piece][a.rotation].cells, a.x, a.y + 1)) {
+          a.y += 1;
+          restingSince = null;
+          drawSide(side);
+        } else if (restingSince === null) {
+          restingSince = performance.now();
+        } else if (performance.now() - restingSince >= LOCK_DELAY_MS) {
+          lock();
+        }
+      }
+    };
+
+    decide();
+    if (!lockstep) gravity();
+    await lockedPromise;
     if (signal.aborted) return;
     await settlePiece(side, landed, ctx);
   }

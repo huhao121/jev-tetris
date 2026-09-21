@@ -11,10 +11,13 @@ import {
   countHoles,
   columnHeights,
   describePlacement,
+  enumerateActions,
+  boardStats,
+  SPAWN_X,
   makeBag,
 } from "../public/tetris.js";
 import * as engine from "../public/tetris.js";
-import { buildRequest, pickPlacement, buildQuestions } from "../public/jev.js";
+import { buildRequest, pickAction } from "../public/jev.js";
 
 function boardFrom(rows) {
   // rows: bottom-most last, strings of '#' and '.', padded to HEIGHT at the top
@@ -133,45 +136,59 @@ test("makeBag returns every piece once", () => {
   assert.deepEqual([...bag].sort(), [...PIECE_NAMES].sort());
 });
 
-test("buildRequest produces one criteria entry per placement with stable fields", () => {
+test("enumerateActions offers only the moves possible right now, each with its landing", () => {
   const board = emptyBoard();
-  const placements = enumeratePlacements(board, "L");
-  const request = buildRequest(
-    { board, piece: "L", nextPiece: "I", stats: placements[0].before, linesCleared: 0 },
-    placements,
-  );
-  assert.equal(request.model, "jev-latest");
-  assert.equal(Object.keys(request.questions.placement.criteria).length, placements.length);
-  const fields = Object.keys(request.questions.placement.criteria.p0);
-  for (const id of Object.keys(request.questions.placement.criteria)) {
-    assert.deepEqual(Object.keys(request.questions.placement.criteria[id]), fields);
-  }
-  assert.equal(request.state.game.board_rows_top_to_bottom.length, HEIGHT);
-  assert.equal(request.questions.strategy.type, "choice");
-  assert.equal(request.questions.board_health.type, "score");
-  assert.equal(request.questions.next_piece_fits.type, "noul");
-  // Request should stay far below the 32k token state budget.
-  assert.ok(JSON.stringify(request).length < 20_000);
+  const spawn = { rotation: 0, x: SPAWN_X, y: 0 };
+  const ids = enumerateActions(board, "T", spawn).map((a) => a.id);
+  assert.deepEqual(ids, ["left", "right", "rotate", "down", "drop"]);
+  // Against the left wall there is no left move; resting on the floor there is no down.
+  assert.ok(!enumerateActions(board, "T", { rotation: 0, x: 0, y: 0 }).some((a) => a.id === "left"));
+  const resting = enumerateActions(board, "T", { rotation: 0, x: 3, y: HEIGHT - 2 });
+  assert.ok(!resting.some((a) => a.id === "down"));
+  const drop = enumerateActions(board, "T", spawn).find((a) => a.id === "drop");
+  assert.equal(drop.state.y, HEIGHT - 2);
+  assert.equal(drop.rowsToFall, 0);
+  assert.equal(drop.landing.linesCleared, 0);
+  // The O piece cannot rotate.
+  assert.ok(!enumerateActions(board, "O", spawn).some((a) => a.id === "rotate"));
 });
 
-test("pickPlacement maps the answer back and ranks alternatives", () => {
-  const placements = enumeratePlacements(emptyBoard(), "T");
+test("buildRequest shows the falling piece and describes every offered move the same way", () => {
+  const board = emptyBoard();
+  const state = { rotation: 0, x: SPAWN_X, y: 0 };
+  const actions = enumerateActions(board, "L", state);
+  const request = buildRequest(
+    { board, piece: "L", nextPiece: "I", state, stats: boardStats(board), linesCleared: 0, versus: true, rowsToFall: HEIGHT - 2 },
+    actions,
+  );
+  assert.equal(request.model, "jev-latest");
+  assert.equal(request.state.game.board_rows_top_to_bottom.length, HEIGHT);
+  assert.ok(request.state.game.board_rows_top_to_bottom.join("").includes("@"));
+  assert.match(request.state.game.rules, /versus/);
+  const criteria = request.questions.move.criteria;
+  assert.deepEqual(Object.keys(criteria), actions.map((a) => a.id));
+  const fields = Object.keys(criteria.left.landing);
+  for (const id of Object.keys(criteria)) assert.deepEqual(Object.keys(criteria[id].landing), fields);
+  assert.match(criteria.drop.piece_after, /^locked at/);
+  assert.match(criteria.left.piece_after, /rows above where it would land/);
+  // No strategy is prescribed: the objective is the game's own.
+  for (const line of request.questions.move.instructions.objective) assert.doesNotMatch(line, /hole|flat/i);
+  assert.equal(request.questions.strategy, undefined);
+  assert.ok(JSON.stringify(request).length < 6_000);
+});
+
+test("pickAction maps the answer back and ranks alternatives", () => {
+  const actions = enumerateActions(emptyBoard(), "T", { rotation: 0, x: SPAWN_X, y: 0 });
   const response = {
     answers: {
-      placement: {
-        type: "choice",
-        choice: "p3",
-        confidence: 0.4,
-        probabilities: Object.fromEntries(placements.map((p) => [p.id, p.id === "p3" ? 0.5 : p.id === "p1" ? 0.3 : 0.01])),
-      },
+      move: { type: "choice", choice: "rotate", probabilities: { left: 0.1, right: 0.1, rotate: 0.6, down: 0.1, drop: 0.1 }, confidence: 0.6 },
     },
   };
-  const { chosen, ranked, confidence } = pickPlacement(response, placements);
-  assert.equal(chosen.id, "p3");
-  assert.equal(ranked[0].placement.id, "p3");
-  assert.equal(ranked[1].placement.id, "p1");
-  assert.equal(confidence, 0.4);
-  assert.equal(Object.keys(buildQuestions(placements)).length, 4);
+  const { chosen, ranked, confidence } = pickAction(response, actions);
+  assert.equal(chosen.id, "rotate");
+  assert.equal(ranked[0].action.id, "rotate");
+  assert.equal(confidence, 0.6);
+  assert.equal(pickAction({ answers: { move: { type: "choice", choice: "jump", probabilities: {} } } }, actions).chosen, null);
 });
 
 test("seeded bags give two players the same piece sequence", async () => {
@@ -185,20 +202,18 @@ test("seeded bags give two players the same piece sequence", async () => {
   assert.notDeepEqual([...makeBag(c)], seqA.slice(0, 7));
 });
 
-test("Haiku prompt lists every option and the reply parser only accepts real ids", async () => {
-  const { buildHaikuPrompt, parseHaikuChoice } = await import("../public/players.js");
+test("Haiku prompt lists every move and the reply parser only accepts offered ids", async () => {
+  const { buildChatPrompt, buildHaikuTool, parseHaikuChoice } = await import("../public/players.js");
   const board = emptyBoard();
-  const placements = enumeratePlacements(board, "S");
-  const prompt = JSON.parse(buildHaikuPrompt({ board, piece: "S", nextPiece: "O", stats: placements[0].before, linesCleared: 0 }, placements));
-  assert.equal(Object.keys(prompt.options).length, placements.length);
-  assert.equal(prompt.current_piece, "S");
-  const msg = (content) => ({ content });
-  assert.equal(parseHaikuChoice(msg([{ type: "tool_use", name: "place_piece", input: { option_id: "p3" } }]), placements).id, "p3");
-  assert.equal(parseHaikuChoice(msg([{ type: "text", text: "I choose p2 because" }]), placements).id, "p2");
-  assert.equal(parseHaikuChoice(msg([{ type: "tool_use", name: "place_piece", input: { option_id: "p999" } }]), placements), null);
-  assert.equal(parseHaikuChoice(msg([{ type: "text", text: "no idea" }]), placements), null);
-  const { buildHaikuTool } = await import("../public/players.js");
-  assert.deepEqual(buildHaikuTool(placements).input_schema.properties.option_id.enum, placements.map((p) => p.id));
+  const state = { rotation: 0, x: SPAWN_X, y: 0 };
+  const actions = enumerateActions(board, "S", state);
+  const prompt = JSON.parse(buildChatPrompt({ board, piece: "S", nextPiece: "Z", state, stats: boardStats(board), linesCleared: 0, rowsToFall: 18 }, actions));
+  assert.deepEqual(Object.keys(prompt.moves), actions.map((a) => a.id));
+  assert.ok(prompt.board_rows_top_to_bottom.join("").includes("@"));
+  assert.deepEqual(buildHaikuTool(actions).input_schema.properties.move.enum, actions.map((a) => a.id));
+  assert.equal(parseHaikuChoice({ content: [{ type: "tool_use", name: "make_move", input: { move: "left" } }] }, actions).id, "left");
+  assert.equal(parseHaikuChoice({ content: [{ type: "tool_use", name: "make_move", input: { move: "jump" } }] }, actions), null);
+  assert.equal(parseHaikuChoice({ content: [{ type: "text", text: "I would rotate here." }] }, actions).id, "rotate");
 });
 
 test("garbage rows push the stack up and report overflow at the top", async () => {
@@ -217,36 +232,28 @@ test("garbage rows push the stack up and report overflow at the top", async () =
   assert.equal(addGarbage(tall, 1, 0).overflow, false);
 });
 
-test("Gemini tool schema enumerates the options and the parser reads the function call", async () => {
+test("Gemini tool schema enumerates the moves and the parser reads the function call", async () => {
   const { buildGeminiTool, parseGeminiChoice } = await import("../public/players.js");
-  const placements = enumeratePlacements(emptyBoard(), "J");
-  const decl = buildGeminiTool(placements).functionDeclarations[0];
-  assert.equal(decl.name, "place_piece");
-  assert.deepEqual(decl.parameters.properties.option_id.enum, placements.map((p) => p.id));
-  const resp = (parts) => ({ candidates: [{ content: { parts } }] });
-  assert.equal(parseGeminiChoice(resp([{ functionCall: { name: "place_piece", args: { option_id: "p2" } } }]), placements).id, "p2");
-  assert.equal(parseGeminiChoice(resp([{ text: "I'd go with p4." }]), placements).id, "p4");
-  assert.equal(parseGeminiChoice(resp([{ functionCall: { name: "place_piece", args: { option_id: "p999" } } }]), placements), null);
-  assert.equal(parseGeminiChoice({}, placements), null);
+  const actions = enumerateActions(emptyBoard(), "J", { rotation: 0, x: SPAWN_X, y: 0 });
+  const decl = buildGeminiTool(actions).functionDeclarations[0];
+  assert.equal(decl.name, "make_move");
+  assert.deepEqual(decl.parameters.properties.move.enum, actions.map((a) => a.id));
+  const reply = { candidates: [{ content: { parts: [{ functionCall: { name: "make_move", args: { move: "drop" } } }] } }] };
+  assert.equal(parseGeminiChoice(reply, actions).id, "drop");
+  assert.equal(parseGeminiChoice({ candidates: [{ content: { parts: [{ text: "hmm" }] } }] }, actions), null);
 });
 
-test("Laya gets a short text board and the top candidates described location-first", async () => {
-  const { buildLayaRequest, LAYA_CANDIDATES } = await import("../public/players.js");
+test("Laya gets a short text board and the same moves in a dozen words each", async () => {
+  const { buildLayaRequest } = await import("../public/players.js");
   const board = boardFrom(["#########.", "#########.", "#########.", "#########."]);
-  const placements = enumeratePlacements(board, "I");
-  const { candidates, request } = buildLayaRequest(
-    { board, piece: "I", nextPiece: "T", stats: placements[0].before, linesCleared: 0 },
-    placements,
-  );
-  assert.equal(candidates.length, LAYA_CANDIDATES);
+  const state = { rotation: 1, x: 8, y: 0 };
+  const actions = enumerateActions(board, "I", state);
+  const request = buildLayaRequest({ board, piece: "I", nextPiece: "T", state, stats: boardStats(board), linesCleared: 0, rowsToFall: 12 }, actions);
   assert.equal(typeof request.state, "string");
-  assert.match(request.state, /Column 10 is a deep well/);
   assert.match(request.state, /falling piece is an I bar/);
-  const ids = Object.keys(request.questions.placement.criteria);
-  assert.deepEqual(ids, candidates.map((p) => p.id));
-  // The four-line clear is the best heuristic option and is described first.
-  assert.equal(request.questions.placement.criteria[ids[0]], "column 10 vertical: clears four lines, no holes, stack gets lower");
-  for (const text of Object.values(request.questions.placement.criteria)) {
-    assert.ok(text.split(/\s+/).length <= 14, text);
-  }
+  assert.deepEqual(Object.keys(request.questions.move.criteria), actions.map((a) => a.id));
+  for (const text of Object.values(request.questions.move.criteria)) assert.ok(text.split(/\s+/).length <= 18, text);
+  // Moving right puts the bar over the well: that option says it clears four lines.
+  assert.match(request.questions.move.criteria.right, /clears four lines/);
 });
+

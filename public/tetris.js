@@ -271,32 +271,82 @@ export function enumeratePlacements(board, piece, spawn = { rotation: 0, x: SPAW
     const straight = !collides(board, cells, st.x, 0) && dropY(board, cells, st.x, 0) === st.y;
     const lastMove = path[path.length - 1];
     const how = straight ? "drop" : lastMove === "rotateCw" || lastMove === "rotateCcw" ? "spin" : "tuck";
-    const { board: after, cleared, rows } = clearLines(locked);
-    const stats = boardStats(after);
-    byBoard.set(boardKey, {
-      piece,
-      rotation: st.rotation,
-      x: st.x,
-      y: st.y,
-      cells: cells.map(([cx, cy]) => [st.x + cx, st.y + cy]),
-      path,
-      how,
-      linesCleared: cleared,
-      clearedRows: rows,
-      holesCreated: Math.max(0, stats.holes - before.holes),
-      holesRemoved: Math.max(0, before.holes - stats.holes),
-      heightDelta: stats.maxHeight - before.maxHeight,
-      before,
-      after: stats,
-      afterBoard: after,
-    });
+    byBoard.set(boardKey, { ...outcomeAt(board, piece, st.rotation, st.x, st.y, before), path, how });
   }
   const placements = [...byBoard.values()].sort((a, b) => a.rotation - b.rotation || a.x - b.x || a.y - b.y);
   placements.forEach((p, i) => {
     p.id = `p${i}`;
-    p.heuristic = heuristicScore(p);
   });
   return placements;
+}
+
+// What the board looks like if the piece locks at (rotation, x, y): lines
+// cleared, holes made or uncovered, height change, and the stats after.
+export function outcomeAt(board, piece, rotation, x, y, before = boardStats(board)) {
+  const cells = PIECES[piece][rotation].cells;
+  const locked = lockPiece(board, piece, rotation, x, y);
+  const { board: after, cleared, rows } = clearLines(locked);
+  const stats = boardStats(after);
+  const outcome = {
+    piece,
+    rotation,
+    x,
+    y,
+    cells: cells.map(([cx, cy]) => [x + cx, y + cy]),
+    linesCleared: cleared,
+    clearedRows: rows,
+    holesCreated: Math.max(0, stats.holes - before.holes),
+    holesRemoved: Math.max(0, before.holes - stats.holes),
+    heightDelta: stats.maxHeight - before.maxHeight,
+    before,
+    after: stats,
+    afterBoard: after,
+  };
+  outcome.heuristic = heuristicScore(outcome);
+  return outcome;
+}
+
+// ---- Player actions ------------------------------------------------------------------
+// A model plays like someone at the keyboard: one of these per decision. Each
+// action is described by the piece's position after it and by where the piece
+// would land if it were dropped from there, so the decision is judged by
+// outcomes without doing any spatial arithmetic. Moves that are blocked right
+// now are left out; `down` disappears once the piece rests on the stack, and
+// `drop` then locks it where it is.
+export const ACTIONS = ["left", "right", "rotate", "down", "drop"];
+
+export function enumerateActions(board, piece, state, before = boardStats(board)) {
+  const list = [];
+  for (const action of ACTIONS) {
+    let next;
+    if (action === "drop") {
+      next = { rotation: state.rotation, x: state.x, y: dropY(board, PIECES[piece][state.rotation].cells, state.x, state.y) };
+    } else {
+      next = stepPiece(board, piece, state, action === "rotate" ? "rotateCw" : action);
+    }
+    if (!next) continue;
+    const landY = dropY(board, PIECES[piece][next.rotation].cells, next.x, next.y);
+    list.push({
+      id: action,
+      action,
+      state: next,
+      locks: action === "drop",
+      rowsToFall: landY - next.y,
+      landing: outcomeAt(board, piece, next.rotation, next.x, landY, before),
+    });
+  }
+  return list;
+}
+
+// The board with the falling piece drawn in, for the model's eyes.
+export function boardWithPiece(board, piece, state) {
+  const rows = board.map((row) => row.map((c) => (c ? "#" : ".")));
+  for (const [cx, cy] of PIECES[piece][state.rotation].cells) {
+    const x = state.x + cx;
+    const y = state.y + cy;
+    if (y >= 0 && y < HEIGHT && x >= 0 && x < WIDTH) rows[y][x] = "@";
+  }
+  return rows.map((r) => r.join(""));
 }
 
 // ---- Descriptions for Jev -------------------------------------------------
@@ -362,7 +412,7 @@ export function describePlacement(p) {
   const holes = p.holesCreated;
   return {
     where: describeWhere(p),
-    how: HOW[p.how] || HOW.drop,
+    ...(p.how ? { how: HOW[p.how] } : {}),
     lines_cleared: describeLines(p.linesCleared),
     holes_created: describeHoles(holes),
     holes_uncovered: p.holesRemoved > 0 ? describeHoles(p.holesRemoved) : "none",
@@ -370,6 +420,48 @@ export function describePlacement(p) {
     height_change: describeHeightChange(p),
     surface_after: describeSurface(p.after.bumpiness),
     wells_after: describeWells(p.after.wells),
+  };
+}
+
+const MOVE_WORDS = {
+  left: "move one column to the left",
+  right: "move one column to the right",
+  rotate: "rotate clockwise",
+  down: "move down one row",
+  drop: "drop straight down and lock now",
+};
+
+function describeSpan(cells) {
+  const xs = cells.map((c) => c[0]);
+  const left = Math.min(...xs) + 1;
+  const right = Math.max(...xs) + 1;
+  return left === right ? `column ${left}` : `columns ${left}-${right}`;
+}
+
+export function describeFall(rows) {
+  if (rows <= 0) return "resting on the stack";
+  if (rows === 1) return "one row above where it would land";
+  return `${rows} rows above where it would land`;
+}
+
+// The Choice criteria entry for one action. `landing` has the same fields on
+// every option so the model compares outcomes directly.
+export function describeAction(a) {
+  const cells = PIECES[a.landing.piece][a.state.rotation].cells.map(([cx, cy]) => [a.state.x + cx, a.state.y + cy]);
+  const d = describePlacement(a.landing);
+  return {
+    move: MOVE_WORDS[a.action],
+    piece_after: a.locks ? `locked at ${d.where}` : `${describeSpan(cells)}, ${describeFall(a.rowsToFall)}`,
+    landing: {
+      where: d.where,
+      lines_cleared: d.lines_cleared,
+      holes_created: d.holes_created,
+      holes_uncovered: d.holes_uncovered,
+      stack_height_after: d.stack_height_after,
+      height_change: d.height_change,
+      surface_after: d.surface_after,
+      wells_after: d.wells_after,
+    },
   };
 }
 

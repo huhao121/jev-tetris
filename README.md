@@ -25,17 +25,21 @@ Each side runs its own real-time game loop on a seeded piece sequence shared by 
 - **Versus.** Every cleared line becomes a garbage row (full except one gap) queued for the opponent
   and inserted under their stack when their current piece locks. A red counter shows incoming rows.
   If the push shoves the stack out of the top, that player is out, and the first to top out loses.
-- **Same information for both.** Code enumerates every placement the piece can actually reach from
-  its spawn by moving, rotating and falling, straight drops, tucks under overhangs and spins alike,
-  and describes each outcome in words (how the piece gets there, lines cleared, holes created,
-  height, surface, wells). `node tools/jev-request-sample.mjs` prints the exact request Jev sees
-  for a sample board; [`docs/jev-request-sample.json`](docs/jev-request-sample.json) is its output. Jev answers with a Choice question
+- **One move at a time, like a player at the keyboard.** Every request shows the board with the
+  falling piece in it and offers the moves possible right now: left, right, rotate, down, drop.
+  Code describes each move by where the piece would be afterwards and what the board would look
+  like if it were dropped from there (lines cleared, holes, height, surface, wells); the model
+  picks one, the move is applied, and the next request goes out immediately. Gravity keeps
+  pulling the piece down between answers, and a piece that comes to rest locks 400 ms later
+  unless it is moved. Nothing about strategy is prescribed: the objective is the game's own,
+  survive and clear lines. `node tools/jev-request-sample.mjs` prints the exact request Jev sees
+  for a sample state; [`docs/jev-request-sample.json`](docs/jev-request-sample.json) is its output. Jev answers with a Choice question
   over those options; the opponent (Claude Haiku 4.5 via the Anthropic API, or Gemini 3.8 Flash via
-  the Gemini API) answers through a forced `place_piece` function call whose `option_id` is an enum
-  of the same options. Laya, whose context is only 512 tokens, gets a one-paragraph description of
-  the board and the six best placements pre-ranked by the code's heuristic, and picks one with the
-  same Choice question shape. All are constrained to legal moves; latency is part of the game. Pick
-  the opponent in the setup card or with `?opponent=gemini` / `?opponent=laya`.
+  the Gemini API) answers through a forced `make_move` function call whose `move` is an enum of the
+  same moves. Laya, whose context is only 512 tokens, gets a one-paragraph description of the board
+  and the same moves in a dozen words each. All are constrained to possible moves; latency is part
+  of the game, since a slow answer means fewer moves per piece. Pick the opponent in the setup
+  card or with `?opponent=gemini` / `?opponent=laya`.
 - **Stats per model.** Lines, pieces, garbage sent and received, average and min/max latency, missed
   deadlines, invalid answers, model calls, tokens in and out, cost and cost per move, live under each
   board and in a side-by-side table when the match ends.
@@ -65,6 +69,8 @@ switches to reproducible seeds (seed, seed+1, …) instead of random ones.
 ### Results so far
 
 Seed 42, one run each. Jev is not fully deterministic between runs, so treat these as samples.
+These results were recorded with the earlier harness, where each model chose a resting spot once
+per piece and the code played the moves; with per-move control every model plays differently.
 
 **Jev vs Laya**
 

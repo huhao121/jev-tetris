@@ -86,7 +86,7 @@ function presentRows(side) {
     ["Sent", s.sent],
     ["Received", s.received],
     ["Latency", s.calls ? fmtMs(s.latency / s.calls) : "–"],
-    ["Missed", s.missed],
+    ["Moves/pc", side.pieces ? (s.moves / side.pieces).toFixed(1) : "–"],
     ["Cost", fmtUsd(s.cost)],
     ["Calls", s.calls],
   ];
@@ -100,7 +100,7 @@ const ROUND_ROWS = [
   ["Pieces", (s) => s.pieces],
   ["Garbage sent", (s) => s.stats.sent],
   ["Avg latency", avgLatency],
-  ["Missed", (s) => s.stats.missed],
+  ["Moves / piece", (s) => (s.pieces ? (s.stats.moves / s.pieces).toFixed(1) : "–")],
   ["Cost", (s) => fmtUsd(s.stats.cost)],
 ];
 
@@ -109,7 +109,7 @@ const SERIES_ROWS = [
   ["Lines", (t) => t.lines],
   ["Pieces", (t) => t.pieces],
   ["Avg latency", avgLatency],
-  ["Missed", (t) => t.stats.missed],
+  ["Moves / piece", (t) => (t.pieces ? (t.stats.moves / t.pieces).toFixed(1) : "–")],
   ["Tokens in", (t) => t.stats.inputTokens.toLocaleString()],
   ["Cost", (t) => fmtUsd(t.stats.cost)],
 ];
@@ -191,7 +191,7 @@ function addTotals(t, side) {
   t.pieces += side.pieces;
   const a = t.stats;
   const b = side.stats;
-  for (const k of ["calls", "latency", "missed", "invalid", "errors", "inputTokens", "outputTokens", "cost", "sent", "received"]) a[k] += b[k];
+  for (const k of ["calls", "latency", "moves", "late", "invalid", "errors", "inputTokens", "outputTokens", "cost", "sent", "received"]) a[k] += b[k];
   a.minLatency = Math.min(a.minLatency, b.minLatency);
   a.maxLatency = Math.max(a.maxLatency, b.maxLatency);
 }

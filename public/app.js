@@ -5,7 +5,10 @@ import {
   PIECE_COLORS,
   emptyBoard,
   enumeratePlacements,
+  enumerateActions,
+  findPath,
   stepPiece,
+  dropY,
   SPAWN_X,
   lockPiece,
   clearLines,
@@ -13,9 +16,9 @@ import {
   collides,
   makeBag,
   scoreForLines,
-  describePlacement,
+  describeAction,
 } from "./tetris.js";
-import { buildRequest, askJev, pickPlacement, JevError, STRATEGY_OPTIONS, HEALTH_LEVELS } from "./jev.js";
+import { buildRequest, askJev, pickAction, JevError, STRATEGY_OPTIONS, HEALTH_LEVELS } from "./jev.js";
 
 const $ = (id) => document.getElementById(id);
 const PRICE_PER_TOKEN = 0.042 / 1_000_000; // $0.042 per million input tokens (docs.typesafe.ai/models)
@@ -238,31 +241,25 @@ function barRow(name, probability, chosen = false, fillClass = "") {
   </div>`;
 }
 
-function describeForHumans(p) {
-  const d = describePlacement(p);
-  const lines = p.linesCleared ? `clears ${d.lines_cleared}` : "no clear";
-  const holes = p.holesCreated ? d.holes_created : "no holes";
-  return `${d.where} · ${lines} · ${holes}`;
-}
+const MOVE_LABELS = { left: "← left", right: "→ right", rotate: "↻ rotate", down: "↓ down", drop: "⤓ drop" };
 
 function renderDecision(decision, source) {
   const { chosen, ranked, confidence } = decision;
-  const d = describePlacement(chosen);
+  const d = describeAction(chosen);
   const conf = source === "jev" ? `confidence ${confidence.toFixed(2)}` : "code heuristic, no model call";
   ui.decisionTitle.textContent = source === "jev" ? "Jev's move" : "Heuristic's move";
   ui.readsNote.classList.toggle("hidden", source === "jev");
-  ui.chosen.innerHTML = `<strong>${chosen.piece}</strong> → ${d.where}
+  ui.chosen.innerHTML = `<strong>${MOVE_LABELS[chosen.action]}</strong> · ${d.piece_after}
     <span class="muted">(${conf})</span>
     <div class="desc">
-      <span>lines <b>${d.lines_cleared}</b></span>
-      <span>holes <b>${d.holes_created}</b></span>
-      <span>height <b>${d.stack_height_after}</b></span>
-      <span>surface <b>${d.surface_after}</b></span>
-      <span>wells <b>${d.wells_after}</b></span>
+      <span>if dropped: <b>${d.landing.where}</b></span>
+      <span>lines <b>${d.landing.lines_cleared}</b></span>
+      <span>holes <b>${d.landing.holes_created}</b></span>
+      <span>height <b>${d.landing.stack_height_after}</b></span>
+      <span>surface <b>${d.landing.surface_after}</b></span>
     </div>`;
   ui.alternatives.innerHTML = ranked
-    .slice(0, 6)
-    .map((r) => barRow(describeForHumans(r.placement), r.probability, r.placement === chosen))
+    .map((r) => barRow(`${MOVE_LABELS[r.action.action]} · lands ${describeAction(r.action).landing.where}`, r.probability, r.action === chosen))
     .join("");
 }
 
@@ -298,39 +295,55 @@ function renderReads(answers) {
 }
 
 // ---- Deciding -------------------------------------------------------------------
-function heuristicDecision(placements) {
-  const sorted = placements.slice().sort((a, b) => b.heuristic - a.heuristic);
-  // Softmax over heuristic scores so the panel shows a distribution too.
-  const max = sorted[0].heuristic;
-  const weights = sorted.map((p) => Math.exp((p.heuristic - max) / 0.5));
-  const sum = weights.reduce((a, b) => a + b, 0);
+// The code player picks the best resting spot by the classic heuristic when a
+// piece spawns and then plays the moves that get there, one per step, so it
+// goes through the same left/right/rotate/down/drop interface as Jev.
+let heuristicPlan = null; // { piece, target, path }
+
+function heuristicNextMove(actions) {
+  const a = game.active;
+  if (!heuristicPlan || heuristicPlan.piece !== game.pieces) {
+    const placements = enumeratePlacements(game.board, game.current);
+    const target = placements.slice().sort((x, y) => y.heuristic - x.heuristic)[0];
+    heuristicPlan = { piece: game.pieces, target };
+  }
+  const t = heuristicPlan.target;
+  const path = t ? findPath(game.board, game.current, a, { rotation: t.rotation, x: t.x, y: t.y }) : null;
+  let move = path && path.length ? path[0] : "drop";
+  if (move === "rotateCw") move = "rotate";
+  if (move === "rotateCcw") move = "rotate"; // the player interface only rotates one way; three turns follow if needed
+  if (path && path.length && path.every((m) => m === "down")) move = "drop";
+  const byId = new Map(actions.map((x) => [x.id, x]));
+  const chosen = byId.get(move) || byId.get("drop") || actions[0];
+  const ranked = actions.map((x) => ({ action: x, probability: x === chosen ? 1 : 0 }));
+  return { chosen, ranked, confidence: 1 };
+}
+
+function stepInfo(actions) {
+  const a = game.active;
   return {
-    chosen: sorted[0],
-    ranked: sorted.map((p, i) => ({ placement: p, probability: weights[i] / sum })),
-    confidence: weights[0] / sum,
+    board: game.board,
+    piece: game.current,
+    state: { rotation: a.rotation, x: a.x, y: a.y },
+    nextPiece: game.next,
+    stats: boardStats(game.board),
+    linesCleared: game.lines,
+    rowsToFall: dropY(game.board, PIECES[game.current][a.rotation].cells, a.x, a.y) - a.y,
+    actionsCount: actions.length,
   };
 }
 
-async function jevDecision(placements, signal) {
-  const request = buildRequest(
-    {
-      board: game.board,
-      piece: game.current,
-      nextPiece: game.next,
-      stats: boardStats(game.board),
-      linesCleared: game.lines,
-    },
-    placements,
-  );
+async function jevDecision(actions, signal) {
+  const request = buildRequest(stepInfo(actions), actions, { extras: true });
   ui.reqJson.textContent = JSON.stringify(request, null, 2);
-  setStatus(`Asking Jev where to put the ${game.current} (${placements.length} options)…`, "thinking");
+  setStatus(`Asking Jev for the next move with the ${game.current} (${actions.length} options)…`, "thinking");
   const { response, latencyMs } = await askJev(request, currentKey(), { signal });
   ui.resJson.textContent = JSON.stringify(response, null, 2);
   stats.calls += 1;
   stats.latency += latencyMs;
   stats.tokens += response?.usage?.input_tokens || 0;
   renderReads(response.answers);
-  return pickPlacement(response, placements);
+  return pickAction(response, actions);
 }
 
 // ---- Animating --------------------------------------------------------------------
@@ -342,74 +355,77 @@ function stepDelay() {
   return Math.round(240 - v * 23);
 }
 
-async function animateDrop(target, signal) {
-  // Replay the move list that reaches the placement from the spawn, so tucks
-  // and spins are shown the way the piece actually gets there.
-  const { piece, path } = target;
-  const active = { piece, rotation: 0, x: SPAWN_X, y: 0 };
-  game.active = active;
-  draw();
-  for (const move of path || []) {
-    if (signal.aborted) return;
-    await sleep(stepDelay() * (move === "down" ? 0.6 : 1));
-    const next = stepPiece(game.board, piece, active, move);
-    if (!next) break;
-    active.rotation = next.rotation;
-    active.x = next.x;
-    active.y = next.y;
-    draw();
-  }
-  active.rotation = target.rotation;
-  active.x = target.x;
-  active.y = target.y;
-  draw();
-}
+const MAX_MOVES_PER_PIECE = 60;
 
-// ---- Main loop --------------------------------------------------------------------
 async function playLoop(signal) {
   while (game.running && !game.over && !signal.aborted) {
-    const placements = enumeratePlacements(game.board, game.current);
-    if (placements.length === 0) {
+    if (collides(game.board, PIECES[game.current][0].cells, SPAWN_X, 0)) {
       endGame();
       return;
     }
-    const heuristic = heuristicDecision(placements);
-    let decision;
-    const source = mode();
-    if (source === "jev") {
-      try {
-        decision = await jevDecision(placements, signal);
-      } catch (err) {
-        if (signal.aborted) return;
-        handleJevError(err);
-        pause();
-        return;
+    game.active = { piece: game.current, rotation: 0, x: SPAWN_X, y: 0 };
+    game.ghosts = [];
+    draw();
+    let moves = 0;
+    let locked = false;
+    while (!locked && game.running && !signal.aborted) {
+      const a = game.active;
+      const actions = enumerateActions(game.board, game.current, a);
+      const heuristic = heuristicNextMove(actions);
+      let decision;
+      const source = mode();
+      if (source === "jev") {
+        try {
+          decision = await jevDecision(actions, signal);
+        } catch (err) {
+          if (signal.aborted) return;
+          handleJevError(err);
+          pause();
+          return;
+        }
+        if (!decision.chosen) {
+          setStatus("Jev named no valid move; dropping the piece.", "error");
+          decision = { ...decision, chosen: actions.find((x) => x.id === "drop") || actions[0] };
+        }
+      } else {
+        decision = heuristic;
+        await sleep(stepDelay());
+        setStatus(`Heuristic plays the ${game.current}: ${decision.chosen.action}`);
       }
-    } else {
-      decision = heuristic;
-      setStatus(`Heuristic picks a spot for the ${game.current}`);
+      if (signal.aborted) return;
+      stats.decisions += 1;
+      if (decision.chosen === heuristic.chosen) stats.agreements += 1;
+      renderDecision(decision, source);
+      renderStats();
+      hideError();
+      moves += 1;
+      const move = decision.chosen.action;
+      if (move === "drop" || moves >= MAX_MOVES_PER_PIECE) {
+        a.y = dropY(game.board, PIECES[game.current][a.rotation].cells, a.x, a.y);
+        locked = true;
+      } else {
+        const next = stepPiece(game.board, game.current, a, move === "rotate" ? "rotateCw" : move);
+        if (next) {
+          a.rotation = next.rotation;
+          a.x = next.x;
+          a.y = next.y;
+        }
+      }
+      // Ghost: where the piece lands if dropped from here.
+      const gy = dropY(game.board, PIECES[game.current][a.rotation].cells, a.x, a.y);
+      game.ghosts = [{ cells: PIECES[game.current][a.rotation].cells.map(([cx, cy]) => [a.x + cx, gy + cy]), probability: 1, chosen: true }];
+      draw();
+      if (source === "jev") await sleep(Math.min(stepDelay(), 120));
     }
-    if (signal.aborted) return;
+    if (signal.aborted || !game.running) return;
 
-    stats.decisions += 1;
-    if (decision.chosen === heuristic.chosen) stats.agreements += 1;
-    renderDecision(decision, source);
-    renderStats();
-    hideError();
-
-    game.ghosts = decision.ranked
-      .slice(0, 4)
-      .map((r) => ({ cells: r.placement.cells, probability: r.probability, chosen: r.placement === decision.chosen }));
-    setStatus(`Dropping ${game.current} at ${describePlacement(decision.chosen).where}`);
-    await animateDrop(decision.chosen, signal);
-    if (signal.aborted) return;
-
+    const a = game.active;
     game.active = null;
     game.ghosts = [];
-    const locked = lockPiece(game.board, decision.chosen.piece, decision.chosen.rotation, decision.chosen.x, decision.chosen.y);
-    const { board, cleared, rows } = clearLines(locked);
+    const locked2 = lockPiece(game.board, game.current, a.rotation, a.x, a.y);
+    const { board, cleared, rows } = clearLines(locked2);
     if (cleared > 0) {
-      game.board = locked;
+      game.board = locked2;
       game.flash = rows;
       draw();
       await sleep(Math.max(80, stepDelay() * 1.5));
@@ -424,10 +440,6 @@ async function playLoop(signal) {
     renderStats();
     draw();
     drawNext();
-    if (collides(game.board, PIECES[game.current][0].cells, 3, 0)) {
-      endGame();
-      return;
-    }
   }
 }
 

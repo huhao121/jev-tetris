@@ -98,7 +98,7 @@ const comparisonRows = [
   ["Garbage sent", (s) => s.stats.sent],
   ["Garbage received", (s) => s.stats.received],
   ["Avg latency", (s) => (s.player === HUMAN ? "–" : avgLatency(s))],
-  ["Missed deadlines", (s) => (s.player === HUMAN ? "–" : s.stats.missed)],
+  ["Moves / piece", (s) => (s.player === HUMAN ? "–" : s.pieces ? (s.stats.moves / s.pieces).toFixed(1) : "–")],
   ["Tokens in", (s) => (s.player === HUMAN ? "–" : s.stats.inputTokens.toLocaleString())],
   ["Cost", (s) => (s.player === HUMAN ? "–" : fmtUsd(s.stats.cost))],
 ];
