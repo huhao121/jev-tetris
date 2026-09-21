@@ -92,6 +92,9 @@ function presentRows(side) {
   ];
 }
 
+// Short provider names for the narrow side panels.
+const PROVIDER = { haiku: "Anthropic", gemini: "Google", laya: "local, open weights" };
+
 const ROUND_ROWS = [
   ["Lines", (s) => s.lines],
   ["Pieces", (s) => s.pieces],
@@ -133,7 +136,7 @@ function renderOpponent() {
   const opp = opponentChoice();
   ui.badgeR.textContent = opp.name;
   ui.badgeR.className = `badge ${opp.badge}`;
-  ui.modelR.textContent = opp.label;
+  ui.modelR.textContent = PROVIDER[ui.opponent.value] || opp.label;
   ui.nameR.textContent = opp.short;
   const v = ui.opponent.value;
   ui.haikuKeyField.classList.toggle("hidden", v !== "haiku");
@@ -209,7 +212,7 @@ async function startSeries() {
   if (ui.opponent.value === "laya") {
     try {
       const info = await checkLayaServer(oppKey);
-      ui.modelR.textContent = `${info.model || "laya"} · ${info.runtime || "local"}`;
+      ui.modelR.textContent = info.runtime || "laya · local";
     } catch (err) {
       showError(`Laya: ${err.message}`);
       ui.start.disabled = false;

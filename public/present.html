@@ -13,16 +13,18 @@
 <body class="present-page">
   <main class="stage">
     <section class="player" id="left">
-      <div class="player-head">
-        <span class="badge jev">Jev</span>
-        <span class="model muted">jev-latest · TypeSafe</span>
+      <div class="panel">
+        <div class="player-head">
+          <span class="badge jev">Jev</span>
+          <span class="model muted">TypeSafe</span>
+        </div>
+        <div class="incoming" id="incomingL"></div>
+        <div class="pstats" id="statsL"></div>
       </div>
       <div class="board-wrap">
         <canvas class="board" id="boardL" width="400" height="800" aria-label="Jev's board"></canvas>
         <div class="overlay hidden" id="overlayL"></div>
       </div>
-      <div class="incoming" id="incomingL"></div>
-      <div class="pstats" id="statsL"></div>
     </section>
 
     <section class="center">
@@ -40,16 +42,18 @@
     </section>
 
     <section class="player" id="right">
-      <div class="player-head">
-        <span class="badge haiku" id="badgeR">Claude Haiku 4.5</span>
-        <span class="model muted" id="modelR">claude-haiku-4-5 · Anthropic</span>
-      </div>
       <div class="board-wrap">
         <canvas class="board" id="boardR" width="400" height="800" aria-label="Opponent's board"></canvas>
         <div class="overlay hidden" id="overlayR"></div>
       </div>
-      <div class="incoming" id="incomingR"></div>
-      <div class="pstats" id="statsR"></div>
+      <div class="panel">
+        <div class="player-head">
+          <span class="badge haiku" id="badgeR">Claude Haiku 4.5</span>
+          <span class="model muted" id="modelR">Anthropic</span>
+        </div>
+        <div class="incoming" id="incomingR"></div>
+        <div class="pstats" id="statsR"></div>
+      </div>
     </section>
   </main>
 
