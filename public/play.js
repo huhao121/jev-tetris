@@ -3,7 +3,7 @@
 // the battle uses. Both share the piece sequence, the gravity ramp, and the
 // versus garbage rules from arena.js.
 
-import { PIECES, collides, dropY } from "./tetris.js";
+import { PIECES, KICKS, collides, dropY } from "./tetris.js";
 import { createJevPlayer } from "./players.js";
 import {
   SPEEDUPS,
@@ -31,7 +31,6 @@ const $ = (id) => document.getElementById(id);
 const STORAGE = { jev: "jev_tetris_api_key" };
 const LOCK_DELAY_MS = 450;
 const MAX_LOCK_RESETS = 8;
-const KICKS = [0, -1, 1, -2, 2];
 
 const ui = {
   jevKey: $("jevKey"),

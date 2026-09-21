@@ -13,6 +13,7 @@ import {
   describePlacement,
   makeBag,
 } from "../public/tetris.js";
+import * as engine from "../public/tetris.js";
 import { buildRequest, pickPlacement, buildQuestions } from "../public/jev.js";
 
 function boardFrom(rows) {
@@ -85,12 +86,46 @@ test("clearLines removes full rows and keeps the board height", () => {
   assert.deepEqual(columnHeights(after), [1, 0, 0, 0, 0, 1, 1, 1, 1, 1]);
 });
 
-test("no placements when the board is full to the top", () => {
+test("no placements when the piece cannot spawn", () => {
   const rows = Array.from({ length: HEIGHT }, () => "#########.");
   const board = boardFrom(rows);
-  // Only the vertical I in the last column fits; every other piece is stuck.
+  // The spawn point is buried, so nothing is reachable, not even the open column.
   assert.equal(enumeratePlacements(board, "O").length, 0);
-  assert.equal(enumeratePlacements(board, "I").length, 1);
+  assert.equal(enumeratePlacements(board, "I").length, 0);
+  // With the top rows clear the I can travel along them and drop into the well.
+  const open = boardFrom(Array.from({ length: HEIGHT - 4 }, () => "#########."));
+  const well = enumeratePlacements(open, "I").find((p) => p.rotation === 1 && p.x === 9);
+  assert.ok(well);
+  assert.equal(well.linesCleared, 4);
+  assert.equal(well.how, "drop");
+});
+
+test("placements include tucks under an overhang, with the path that gets there", () => {
+  // Cols 1-2 of the bottom row sit under a two-cell overhang; a straight drop
+  // at x=1 lands on the overhang, but a horizontal I can drop to the right of
+  // it and slide left underneath.
+  const board = boardFrom(["###.......", "#........."]);
+  const placements = enumeratePlacements(board, "I");
+  const tuck = placements.find((p) => p.rotation === 0 && p.x === 1 && p.y === HEIGHT - 1);
+  assert.ok(tuck, "tuck placement is enumerated");
+  assert.equal(tuck.how, "tuck");
+  assert.deepEqual(tuck.path.slice(-2), ["left", "left"]);
+  assert.equal(tuck.holesCreated, 0);
+  const onTop = placements.find((p) => p.rotation === 0 && p.x === 1 && p.y === HEIGHT - 3);
+  assert.equal(onTop.how, "drop");
+  // Every placement is reachable: replaying its path from the spawn ends at it.
+  const { stepPiece, SPAWN_X } = engine;
+  for (const p of placements) {
+    let st = { rotation: 0, x: SPAWN_X, y: 0 };
+    for (const m of p.path) st = stepPiece(board, "I", st, m);
+    assert.deepEqual(st, { rotation: p.rotation, x: p.x, y: p.y });
+  }
+  // The description tells the model how the piece gets there.
+  assert.match(describePlacement(tuck).how, /tuck/);
+  assert.match(describePlacement(onTop).how, /straight drop/);
+  // findPath also works from mid-fall, which is what the real-time loop needs.
+  const path = engine.findPath(board, "I", { rotation: 0, x: 3, y: 10 }, { rotation: 0, x: 1, y: HEIGHT - 1 });
+  assert.ok(path && path.length > 0);
 });
 
 test("makeBag returns every piece once", () => {

@@ -188,39 +188,113 @@ export function heuristicScore(outcome) {
 
 // Enumerates every reachable (rotation, x) for `piece` on `board`. A placement
 // is reachable when the piece fits at the spawn row and can drop straight down.
-export function enumeratePlacements(board, piece) {
-  const before = boardStats(board);
-  const seen = new Set();
-  const placements = [];
-  PIECES[piece].forEach((state, rotation) => {
-    for (let x = 0; x <= WIDTH - state.width; x++) {
-      if (collides(board, state.cells, x, 0)) continue;
-      const y = dropY(board, state.cells, x, 0);
-      const locked = lockPiece(board, piece, rotation, x, y);
-      const key = locked.map((r) => r.map((c) => (c ? "#" : ".")).join("")).join("/");
-      if (seen.has(key)) continue; // identical outcome from another rotation (O, I, S, Z)
-      seen.add(key);
-      const { board: after, cleared, rows } = clearLines(locked);
-      const stats = boardStats(after);
-      const outcome = {
-        id: `p${placements.length}`,
-        piece,
-        rotation,
-        x,
-        y,
-        cells: state.cells.map(([cx, cy]) => [x + cx, y + cy]),
-        linesCleared: cleared,
-        clearedRows: rows,
-        holesCreated: Math.max(0, stats.holes - before.holes),
-        holesRemoved: Math.max(0, before.holes - stats.holes),
-        heightDelta: stats.maxHeight - before.maxHeight,
-        before,
-        after: stats,
-        afterBoard: after,
-      };
-      outcome.heuristic = heuristicScore(outcome);
-      placements.push(outcome);
+// ---- Movement and reachability ---------------------------------------------------
+// Pieces spawn at the top, centred. A move is one of left, right, down, rotateCw
+// or rotateCcw; rotation tries a few horizontal kicks so a piece against a wall
+// or the stack can still turn. The same step function drives the search that
+// enumerates placements and the pages that replay a path on screen.
+export const SPAWN_X = 3;
+export const KICKS = [0, -1, 1, -2, 2];
+export const MOVES = ["down", "left", "right", "rotateCw", "rotateCcw"];
+
+export function stepPiece(board, piece, state, move) {
+  const { rotation, x, y } = state;
+  if (move === "left" || move === "right" || move === "down") {
+    const nx = x + (move === "left" ? -1 : move === "right" ? 1 : 0);
+    const ny = y + (move === "down" ? 1 : 0);
+    return collides(board, PIECES[piece][rotation].cells, nx, ny) ? null : { rotation, x: nx, y: ny };
+  }
+  const states = PIECES[piece].length;
+  if (states === 1) return null;
+  const nr = (rotation + (move === "rotateCw" ? 1 : states - 1)) % states;
+  const cells = PIECES[piece][nr].cells;
+  for (const kick of KICKS) if (!collides(board, cells, x + kick, y)) return { rotation: nr, x: x + kick, y };
+  return null;
+}
+
+const stateKey = (s) => `${s.rotation},${s.x},${s.y}`;
+
+// Breadth-first search over piece states from `from`. Returns the visited map
+// key -> { state, prev, move }, where `prev` is the key of the state it was
+// reached from. Shortest paths in moves, ties broken by MOVES order.
+function explore(board, piece, from, stopAt = null) {
+  const start = { rotation: from.rotation, x: from.x, y: from.y };
+  if (collides(board, PIECES[piece][start.rotation].cells, start.x, start.y)) return new Map();
+  const seen = new Map([[stateKey(start), { state: start, prev: null, move: null }]]);
+  const queue = [start];
+  for (let head = 0; head < queue.length; head++) {
+    const cur = queue[head];
+    if (stopAt && stateKey(cur) === stopAt) break;
+    for (const move of MOVES) {
+      const next = stepPiece(board, piece, cur, move);
+      if (!next) continue;
+      const key = stateKey(next);
+      if (seen.has(key)) continue;
+      seen.set(key, { state: next, prev: stateKey(cur), move });
+      queue.push(next);
     }
+  }
+  return seen;
+}
+
+function pathTo(seen, key) {
+  const moves = [];
+  for (let node = seen.get(key); node && node.move; node = seen.get(node.prev)) moves.push(node.move);
+  return moves.reverse();
+}
+
+// Shortest move sequence taking the piece from `from` to the resting state
+// `to` (same rotation, x and y), or null if it cannot get there.
+export function findPath(board, piece, from, to) {
+  const target = stateKey(to);
+  const seen = explore(board, piece, from, target);
+  return seen.has(target) ? pathTo(seen, target) : null;
+}
+
+// Every distinct resting position the piece can actually reach from its spawn
+// by moving, rotating and falling: straight drops, tucks under overhangs and
+// spins alike. Each outcome is scored so the code can pre-rank and the models
+// can compare. `path` is the move list from the spawn; `how` says whether a
+// plain drop from the top would have got there too.
+export function enumeratePlacements(board, piece, spawn = { rotation: 0, x: SPAWN_X, y: 0 }) {
+  const before = boardStats(board);
+  const seen = explore(board, piece, spawn);
+  const byBoard = new Map();
+  for (const [key, node] of seen) {
+    const st = node.state;
+    const cells = PIECES[piece][st.rotation].cells;
+    if (!collides(board, cells, st.x, st.y + 1)) continue; // can still fall: not a resting state
+    const locked = lockPiece(board, piece, st.rotation, st.x, st.y);
+    const boardKey = locked.map((r) => r.map((c) => (c ? "#" : ".")).join("")).join("/");
+    if (byBoard.has(boardKey)) continue; // same outcome from another rotation (O, I, S, Z); BFS order keeps the shortest path
+    const path = pathTo(seen, key);
+    const straight = !collides(board, cells, st.x, 0) && dropY(board, cells, st.x, 0) === st.y;
+    const lastMove = path[path.length - 1];
+    const how = straight ? "drop" : lastMove === "rotateCw" || lastMove === "rotateCcw" ? "spin" : "tuck";
+    const { board: after, cleared, rows } = clearLines(locked);
+    const stats = boardStats(after);
+    byBoard.set(boardKey, {
+      piece,
+      rotation: st.rotation,
+      x: st.x,
+      y: st.y,
+      cells: cells.map(([cx, cy]) => [st.x + cx, st.y + cy]),
+      path,
+      how,
+      linesCleared: cleared,
+      clearedRows: rows,
+      holesCreated: Math.max(0, stats.holes - before.holes),
+      holesRemoved: Math.max(0, before.holes - stats.holes),
+      heightDelta: stats.maxHeight - before.maxHeight,
+      before,
+      after: stats,
+      afterBoard: after,
+    });
+  }
+  const placements = [...byBoard.values()].sort((a, b) => a.rotation - b.rotation || a.x - b.x || a.y - b.y);
+  placements.forEach((p, i) => {
+    p.id = `p${i}`;
+    p.heuristic = heuristicScore(p);
   });
   return placements;
 }
@@ -278,10 +352,17 @@ function describeHeightChange(placement) {
 
 // The Choice criteria entry for one placement. Same field names on every
 // option so Jev can compare them directly.
+const HOW = {
+  drop: "straight drop from the top",
+  tuck: "slides sideways under an overhang before it lands (a tuck)",
+  spin: "rotates into the gap at the last moment (a spin)",
+};
+
 export function describePlacement(p) {
   const holes = p.holesCreated;
   return {
     where: describeWhere(p),
+    how: HOW[p.how] || HOW.drop,
     lines_cleared: describeLines(p.linesCleared),
     holes_created: describeHoles(holes),
     holes_uncovered: p.holesRemoved > 0 ? describeHoles(p.holesRemoved) : "none",

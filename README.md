@@ -25,8 +25,11 @@ Each side runs its own real-time game loop on a seeded piece sequence shared by 
 - **Versus.** Every cleared line becomes a garbage row (full except one gap) queued for the opponent
   and inserted under their stack when their current piece locks. A red counter shows incoming rows.
   If the push shoves the stack out of the top, that player is out, and the first to top out loses.
-- **Same information for both.** Code enumerates every legal placement and describes each outcome in
-  words (lines cleared, holes created, height, surface, wells). Jev answers with a Choice question
+- **Same information for both.** Code enumerates every placement the piece can actually reach from
+  its spawn by moving, rotating and falling, straight drops, tucks under overhangs and spins alike,
+  and describes each outcome in words (how the piece gets there, lines cleared, holes created,
+  height, surface, wells). `node tools/jev-request-sample.mjs` prints the exact request Jev sees
+  for a sample board; [`docs/jev-request-sample.json`](docs/jev-request-sample.json) is its output. Jev answers with a Choice question
   over those options; the opponent (Claude Haiku 4.5 via the Anthropic API, or Gemini 3.8 Flash via
   the Gemini API) answers through a forced `place_piece` function call whose `option_id` is an enum
   of the same options. Laya, whose context is only 512 tokens, gets a one-paragraph description of
@@ -244,7 +247,8 @@ public/players.js     Jev, Claude Haiku, Gemini and Laya players for the battle
 tools/laya_server.py  local HTTP wrapper around Laya (laya-mlx or laya) with the TypeSafe request shape
 public/solo.html      single-player page (+ style.css, app.js)
 public/battle.html    redirect to the front page for old links
-public/tetris.js      pure engine: pieces, placements, outcome descriptions, garbage, seeded RNG
+public/tetris.js      pure engine: pieces, movement and reachable placements, outcome descriptions, garbage, seeded RNG
+tools/jev-request-sample.mjs  prints the request Jev receives for a sample board
 public/jev.js         Jev request builder, API call with retry, answer mapping
 test/tetris.test.mjs  node --test suite
 ```

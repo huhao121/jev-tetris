@@ -9,6 +9,9 @@ import {
   PIECE_COLORS,
   emptyBoard,
   enumeratePlacements,
+  findPath,
+  stepPiece,
+  SPAWN_X,
   lockPiece,
   clearLines,
   boardStats,
@@ -29,7 +32,7 @@ export const SPEEDUPS = {
   brutal: { everyMs: 10_000, factor: 0.8 },
 };
 export const MIN_GRAVITY_MS = 40;
-export const SPAWN_X = 3;
+export { SPAWN_X };
 
 // ?present strips a page down to the boards and the clock for recordings.
 export const PRESENT = new URLSearchParams(location.search).has("present");
@@ -499,23 +502,23 @@ export async function runModelSide(side, ctx) {
     if (outcome === "decided" && decision.chosen) {
       recordDecision(side, decision);
       const t = decision.chosen;
-      const cells = PIECES[piece][t.rotation].cells;
-      if (!collides(side.board, cells, t.x, a.y)) {
-        // Slide into place quickly, then drop.
+      // The piece has been falling while the model thought, so find a route
+      // from where it is now: sideways moves, rotations and drops, which is
+      // what lets it tuck under an overhang or spin into a gap.
+      const path = findPath(side.board, piece, a, { rotation: t.rotation, x: t.x, y: t.y });
+      if (path) {
         side.target = t.cells;
-        a.rotation = t.rotation;
-        while (a.x !== t.x && !signal.aborted) {
-          a.x += Math.sign(t.x - a.x);
+        for (const move of path) {
+          if (signal.aborted) return;
+          const next = stepPiece(side.board, piece, a, move);
+          if (!next) break;
+          a.rotation = next.rotation;
+          a.x = next.x;
+          a.y = next.y;
           drawSide(side);
-          await sleep(18);
+          await sleep(move === "down" ? 10 : 18);
         }
-        const restY = dropY(side.board, cells, t.x, a.y);
-        while (a.y < restY && !signal.aborted) {
-          a.y += 1;
-          drawSide(side);
-          await sleep(10);
-        }
-        landed = { rotation: t.rotation, x: t.x, y: restY };
+        landed = { rotation: a.rotation, x: a.x, y: a.y };
         const d = describePlacement(t);
         if (side.moveEl) side.moveEl.textContent = `${piece} → ${d.where} in ${Math.round(decision.latencyMs)} ms (${decision.note})`;
       } else {

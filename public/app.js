@@ -5,6 +5,8 @@ import {
   PIECE_COLORS,
   emptyBoard,
   enumeratePlacements,
+  stepPiece,
+  SPAWN_X,
   lockPiece,
   clearLines,
   boardStats,
@@ -341,26 +343,26 @@ function stepDelay() {
 }
 
 async function animateDrop(target, signal) {
-  const { piece, rotation, x: tx, y: ty } = target;
-  const spawnX = Math.min(3, WIDTH - PIECES[piece][rotation].width);
-  const cells = PIECES[piece][rotation].cells;
-  let x = collides(game.board, cells, spawnX, 0) ? tx : spawnX;
-  const active = { piece, rotation, x, y: 0 };
+  // Replay the move list that reaches the placement from the spawn, so tucks
+  // and spins are shown the way the piece actually gets there.
+  const { piece, path } = target;
+  const active = { piece, rotation: 0, x: SPAWN_X, y: 0 };
   game.active = active;
   draw();
-  while (active.x !== tx) {
+  for (const move of path || []) {
     if (signal.aborted) return;
-    await sleep(stepDelay());
-    const nx = active.x + Math.sign(tx - active.x);
-    active.x = collides(game.board, cells, nx, active.y) ? tx : nx;
+    await sleep(stepDelay() * (move === "down" ? 0.6 : 1));
+    const next = stepPiece(game.board, piece, active, move);
+    if (!next) break;
+    active.rotation = next.rotation;
+    active.x = next.x;
+    active.y = next.y;
     draw();
   }
-  while (active.y < ty) {
-    if (signal.aborted) return;
-    await sleep(stepDelay() * 0.6);
-    active.y += 1;
-    draw();
-  }
+  active.rotation = target.rotation;
+  active.x = target.x;
+  active.y = target.y;
+  draw();
 }
 
 // ---- Main loop --------------------------------------------------------------------

@@ -54,6 +54,7 @@ export function buildQuestions(placements) {
           "Keep the surface flat. Prefer surface_after of flat over slightly uneven, bumpy, or very jagged.",
           "One deep well is acceptable because the next I piece can fill it. Several deep wells are bad.",
           "When the stack is dangerously high, survival matters more than a clean surface.",
+          "`how` says whether the piece drops straight down, tucks sideways under an overhang, or spins into a gap. All three are ordinary moves; judge each option by its outcome, not by how it gets there.",
         ],
       },
       criteria,
